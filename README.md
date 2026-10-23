@@ -14,7 +14,8 @@ Puis ouvrir <http://localhost:8765>. Conserver la même adresse et le même navi
 
 ## Fonctions disponibles
 
-- Grille illustrée et affichage en liste ; interface adaptée au téléphone et à l’ordinateur.
+- Interface conçue pour le téléphone : navigation en bas, liste illustrée lisible, recherche persistante et filtres avec aperçu des résultats. Grille et liste disponibles sur ordinateur.
+- Fiches plein écran sur mobile, raccourcis Consignes / Dosage / Vigilance, retour du navigateur et recherche conservée entre les onglets.
 - 16 fiches d’exemple modifiables, avec tous les champs du cahier des charges.
 - Recherche libre sans distinction de casse ou d’accent, tri et sept catégories de filtres combinables.
 - **ET entre catégories, OU entre tags d’une catégorie**, comme indiqué dans l’interface.
@@ -41,7 +42,8 @@ Les exemples initiaux sont copiés uniquement lorsqu’aucune sauvegarde locale 
 | Fichier | Rôle |
 | --- | --- |
 | `index.html` | Structure HTML et navigation |
-| `styles.css` | Présentation, responsive et impression |
+| `styles.css` | Présentation sur ordinateur et impression |
+| `mobile.css` | Ergonomie mobile, navigation et panneaux tactiles |
 | `data.js` | Fiches et catégories d’exemple |
 | `illustrations.js` | Illustrations SVG originales |
 | `model.js` | Validation des sauvegardes, recherche et filtres |
@@ -65,9 +67,12 @@ Tests des parcours dans Chromium, après lancement du serveur local ci-dessus, s
 
 ```sh
 python tests/browser.py
+python tests/mobile.py
 ```
 
 Le chemin du navigateur peut être adapté avec `CHROMIUM_PATH`, et l’URL avec `KINE_TEST_URL`. Les captures et le PDF de contrôle sont produits dans `test-results/`, exclu du dépôt.
+
+Les [choix d’ergonomie mobile](docs/ergonomie-mobile.md) détaillent les références consultées et les vérifications.
 
 ## Cadre d’usage
 

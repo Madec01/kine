@@ -33,6 +33,7 @@ const icons={
  download:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',
  upload:'<path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/>',
  trash:'<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
+ more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
  check:'<path d="m5 12 4 4L20 5"/>',alert:'<path d="m12 3 10 18H2Zm0 6v5m0 3v.1"/>',
  chevron:'<path d="m9 5 7 7-7 7"/>',link:'<path d="m10 13 4-4M8 16l-2 2a4 4 0 0 1-5-5l5-5a4 4 0 0 1 5 0m2 8a4 4 0 0 0 5 0l5-5a4 4 0 0 0-5-5l-2 2"/>'
 };
@@ -41,6 +42,9 @@ function hydrate(root=document){root.querySelectorAll('[data-icon]').forEach(el=
 let state=M.validateState(M.clone(window.KINE_SEED)), storageProblem='',blockedStorage=false;
 try{const saved=localStorage.getItem(KEY);if(saved)state=M.validateState(JSON.parse(saved));}catch(error){storageProblem='La sauvegarde locale ne peut pas être lue. Exportez-la depuis « Sauvegarde & données » avant de la remplacer.';blockedStorage=true;}
 let view='library',collectionId=null,query='',filters={},sort='default',listMode=false,detailId=null,editorCategories=[],editorId=null,pendingMedia=null,utilityMode=null,toastTimer;
+const phoneMedia=window.matchMedia('(max-width: 840px), (max-width: 1000px) and (pointer: coarse)');
+const viewMemory=new Map();
+let draftFilters=null,modalHistory=false,historyClosing=false;
 const newId=prefix=>`${prefix}-${typeof crypto.randomUUID==='function'?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10)}`;
 const category=id=>state.categories.find(c=>c.id===id);
 const exercise=id=>state.exercises.find(e=>e.id===id);
@@ -50,20 +54,52 @@ function save(next,message){
  catch(error){toast(error.name==='QuotaExceededError'?'Stockage plein. Exportez vos données et réduisez la taille des images.':`Enregistrement impossible : ${error.message}`);return false;}
 }
 function change(mutator,message){const next=M.clone(state);mutator(next);return save(next,message);}
-function showDialog(id){const el=$(id);if(!el.open)el.showModal();}
-function closeDialog(id){$(id).close();}
-function closeButton(dialog){return `<button type="button" class="icon-button" data-action="close" data-dialog="${dialog}" aria-label="Fermer">${icon('x')}</button>`;}
+function syncModalHistory(){
+ const open=$('dialog[open]');
+ if(open&&!modalHistory&&!historyClosing){history.pushState({...(history.state||{}),kineOverlay:true},'');modalHistory=true;}
+ else if(!open&&modalHistory&&!historyClosing){historyClosing=true;history.back();}
+}
+function showDialog(id){const el=$(id);if(!el.open){el.showModal();syncModalHistory();}}
+function closeDialog(id){$(id).close();queueMicrotask(syncModalHistory);}
+function closeButton(dialog){return `<button type="button" class="icon-button dialog-close" data-action="close" data-dialog="${dialog}" aria-label="Fermer"><span class="close-icon">${icon('x')}</span><span class="back-icon">${icon('back')}</span></button>`;}
 function heading(title,description='',dialog='utility-dialog'){return `<div class="dialog-header"><div><h2 id="${dialog==='editor-dialog'?'editor':dialog==='detail-dialog'?'detail':'utility'}-title">${escape(title)}</h2>${description?`<p>${escape(description)}</p>`:''}</div>${closeButton(dialog)}</div>`;}
 function utility(title,description,body,mode){utilityMode=mode;$('#utility-content').innerHTML=heading(title,description)+`<div class="utility-body">${body}</div>`;showDialog('#utility-dialog');}
-function toggleFilter(key,value){const values=filters[key]||[];filters[key]=values.includes(value)?values.filter(v=>v!==value):[...values,value];renderControls();render();}
+function toggleFilter(key,value){
+ const active=document.activeElement,container=active.closest('#quick-filters,#active-filters,#filter-fields')?.id;
+ const values=filters[key]||[];filters[key]=values.includes(value)?values.filter(v=>v!==value):[...values,value];
+ renderControls();render();
+ if(container){const target=container==='filter-fields'?`#filter-fields input[data-filter="${CSS.escape(key)}"][value="${CSS.escape(value)}"]`:`#${container} [data-key="${CSS.escape(key)}"][data-value="${CSS.escape(value)}"]`;$(target)?.focus({preventScroll:true});}
+}
 function resetFilters(){filters={};query='';$('#search').value='';renderControls();render();}
-function go(next,id=null){view=next;collectionId=id;resetFilters();$('#main').scrollIntoView({behavior:'instant',block:'start'});}
+function go(next,id=null){
+ if(next===view&&id===collectionId){window.scrollTo({top:0,behavior:'instant'});return;}
+ viewMemory.set(view+(collectionId||''),{query,filters:M.clone(filters),sort,listMode,scrollY:window.scrollY});
+ view=next;collectionId=id;
+ const saved=viewMemory.get(next+(id||''));
+ query=saved?.query||'';filters=M.clone(saved?.filters||{});sort=saved?.sort||'default';listMode=saved?.listMode||false;
+ $('#search').value=query;$('#sort').value=sort;renderControls();render();
+ requestAnimationFrame(()=>window.scrollTo({top:saved?.scrollY||0,behavior:'instant'}));
+}
+function openMobileFilters(){
+ draftFilters=M.clone(filters);
+ $('#mobile-filter-fields').innerHTML=state.categories.map((c,index)=>`<details class="mobile-filter-group" data-mobile-category="${c.id}" ${index<2||(draftFilters[c.id]||[]).length?'open':''}><summary><span>${escape(c.name)}</span><span class="filter-group-count"></span>${icon('chevron')}</summary><fieldset><legend class="sr-only">${escape(c.name)}</legend><div class="check-options">${c.tags.map(tag=>`<label class="check-chip"><input type="checkbox" data-mobile-filter="${c.id}" value="${escape(tag)}" ${(draftFilters[c.id]||[]).includes(tag)?'checked':''}>${escape(tag)}</label>`).join('')||'<p>Aucun tag dans cette catégorie.</p>'}</div></fieldset></details>`).join('');
+ updateFilterPreview();showDialog('#filters-dialog');$('#toggle-filters').setAttribute('aria-expanded','true');
+}
+function updateFilterPreview(){
+ if(!draftFilters)return;
+ const count=M.selectExercises(state,{view,collectionId,query,filters:draftFilters,sort}).length;
+ $('#mobile-filter-apply').textContent=`Afficher ${count} exercice${count>1?'s':''}`;
+ $$('#mobile-filter-fields .mobile-filter-group').forEach(group=>{const selected=(draftFilters[group.dataset.mobileCategory]||[]).length;group.querySelector('.filter-group-count').textContent=selected?String(selected):'';});
+}
+function applyMobileFilters(){if(!draftFilters)return;filters=M.clone(draftFilters);renderControls();render();closeDialog('#filters-dialog');}
 function renderControls(){
+ const quickScroll=$('#quick-filters').scrollLeft;
  const goalIcons={'Renforcement':'strength','Équilibre':'balance','Mobilité':'mobility','Marche':'walk','Coordination':'target','Endurance':'activity','Respiration':'leaf'};
  $('#quick-filters').innerHTML=`<button class="chip ${!(filters.goal||[]).length?'active':''}" data-action="all-goals" aria-pressed="${!(filters.goal||[]).length}">${icon('grid')} Tous les objectifs</button>`+category('goal').tags.map(tag=>`<button class="chip ${(filters.goal||[]).includes(tag)?'active':''}" data-action="filter" data-key="goal" data-value="${escape(tag)}" aria-pressed="${(filters.goal||[]).includes(tag)}">${icon(goalIcons[tag]||'target')}${escape(tag)}</button>`).join('');
  $('#filter-fields').innerHTML=state.categories.map(c=>`<fieldset><legend>${escape(c.name)}</legend><div class="check-options">${c.tags.map(tag=>`<label class="check-chip"><input type="checkbox" data-filter="${c.id}" value="${escape(tag)}" ${(filters[c.id]||[]).includes(tag)?'checked':''}>${escape(tag)}</label>`).join('')||'<span class="collection-empty">Ajoutez des tags dans Catégories & tags.</span>'}</div></fieldset>`).join('');
  $('#active-filters').innerHTML=Object.entries(filters).flatMap(([key,values])=>values.map(value=>`<button class="active-filter" data-action="filter" data-key="${key}" data-value="${escape(value)}" aria-label="Retirer le filtre ${escape(value)}">${escape(value)}${icon('x')}</button>`)).join('');
  const count=Object.values(filters).flat().length;$('#filter-count').textContent=count;$('#filter-count').hidden=!count;
+ $('#quick-filters').scrollLeft=quickScroll;$('#toggle-filters').setAttribute('aria-controls',phoneMedia.matches?'filters-dialog':'filter-panel');
 }
 function imageMarkup(e,detail=false){
  if(e.media.type==='image')return `<img src="${escape(e.media.src)}" alt="${escape(e.name)}" loading="lazy" referrerpolicy="no-referrer">`;
@@ -71,19 +107,30 @@ function imageMarkup(e,detail=false){
  return A.draw(e.art,e.palette);
 }
 function favoriteButton(e){const favorite=state.favorites.includes(e.id);return `<button class="favorite-button" data-action="favorite" data-id="${e.id}" aria-label="${favorite?'Retirer des':'Ajouter aux'} favoris : ${escape(e.name)}" aria-pressed="${favorite}">${icon('heart')}</button>`;}
-function card(e){const level=e.tags.level[0]||'Niveau à préciser',levelIndex=category('level').tags.indexOf(level);return `<article class="exercise-card"><div class="card-visual"><button class="card-image-link" data-action="detail" data-id="${e.id}" aria-label="Ouvrir la fiche : ${escape(e.name)}">${imageMarkup(e)}</button><span class="level-badge ${levelIndex===1?'moderate':levelIndex>=2?'advanced':''}"><span class="level-dot"></span>${escape(level)}</span>${favoriteButton(e)}${e.media.type==='illustration'?'<span class="art-note">Illustration schématique</span>':''}</div><div class="card-content"><div class="card-heading"><h3><button class="card-title" data-action="detail" data-id="${e.id}">${escape(e.name)}</button></h3></div><p class="card-subtitle">${escape(e.subtitle||e.objective)}</p><div class="card-tags">${e.tags.goal.slice(0,2).map(t=>`<span class="tag">${escape(t)}</span>`).join('')}${e.tags.equipment.slice(0,2).map(t=>`<span class="tag equipment">${escape(t)}</span>`).join('')}</div><div class="card-footer"><span>${icon('person')}${escape(e.tags.position.join(' · ')||'À préciser')}</span><button class="card-open" data-action="detail" data-id="${e.id}">Voir la fiche ${icon('arrow')}</button></div></div></article>`;}
+function card(e){
+ const level=e.tags.level[0]||'Niveau à préciser',levelIndex=category('level').tags.indexOf(level);
+ return `<article class="exercise-card" aria-labelledby="card-title-${e.id}"><button class="card-main" data-action="detail" data-id="${e.id}" aria-label="Ouvrir la fiche : ${escape(e.name)}"><span class="card-visual">${imageMarkup(e)}${e.media.type==='illustration'?'<span class="art-note">Illustration schématique</span>':''}</span><span class="card-content"><span class="level-badge ${levelIndex===1?'moderate':levelIndex>=2?'advanced':''}"><span class="level-dot"></span>${escape(level)}</span><span class="card-title" id="card-title-${e.id}">${escape(e.name)}</span><span class="card-subtitle">${escape(e.subtitle||e.objective)}</span><span class="card-tags">${e.tags.goal.slice(0,2).map(t=>`<span class="tag">${escape(t)}</span>`).join('')}${e.tags.equipment.slice(0,2).map(t=>`<span class="tag equipment">${escape(t)}</span>`).join('')}</span><span class="card-footer"><span>${icon('person')}${escape(e.tags.position.join(' · ')||'À préciser')}</span><span class="card-open">Voir la fiche ${icon('arrow')}</span></span></span></button>${favoriteButton(e)}</article>`;
+}
 function render(){
  $('#all-count').textContent=state.exercises.length;$('#fav-count').textContent=state.favorites.length;$('#collection-count').textContent=state.collections.length;
  $('#stat-all').textContent=state.exercises.length;$('#stat-favorites').textContent=state.favorites.length;$('#stat-collections').textContent=state.collections.length;
- $$('.nav-item[data-view]').forEach(button=>{const active=button.dataset.view===view||(view==='collection'&&button.dataset.view==='collections');button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
+ $$('[data-view]').forEach(button=>{const active=button.dataset.view===view||(view==='collection'&&button.dataset.view==='collections');button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
  const currentCollection=state.collections.find(c=>c.id===collectionId);
  if(view==='collection'&&!currentCollection){view='collections';collectionId=null;}
- const titles={library:'Votre bibliothèque d’exercices',favorites:'Vos exercices favoris',collections:'Vos collections personnelles',collection:currentCollection?.name};
- const descriptions={library:'Le bon mouvement, pour chaque patient. Retrouvez vos exercices en un instant.',favorites:'Vos essentiels, toujours à portée de main.',collections:'Rassemblez vos exercices par thème, objectif ou contexte de soin.',collection:currentCollection?.description||'Une sélection d’exercices pour votre pratique.'};
- const labels={library:'Bibliothèque',favorites:'Mes favoris',collections:'Mes collections',collection:currentCollection?.name};
- $('#page-title').innerHTML=`${escape(titles[view])}<span>.</span>`;$('#page-description').textContent=descriptions[view];$('#breadcrumb-current').textContent=labels[view];
+ const titles={settings:'Mon espace',library:'Votre bibliothèque d’exercices',favorites:'Vos exercices favoris',collections:'Vos collections personnelles',collection:currentCollection?.name};
+ const descriptions={settings:'Votre bibliothèque, à votre façon.',library:'Le bon mouvement, pour chaque patient. Retrouvez vos exercices en un instant.',favorites:'Vos essentiels, toujours à portée de main.',collections:'Rassemblez vos exercices par thème, objectif ou contexte de soin.',collection:currentCollection?.description||'Une sélection d’exercices pour votre pratique.'};
+ const labels={settings:'Mon espace',library:'Bibliothèque',favorites:'Mes favoris',collections:'Mes collections',collection:currentCollection?.name};
+ const mobileTitles={library:'Vos exercices',favorites:'Vos favoris',collections:'Vos collections'};
+ $('#page-title').innerHTML=`${escape(phoneMedia.matches?(mobileTitles[view]||titles[view]):titles[view])}<span>.</span>`;$('#page-description').textContent=phoneMedia.matches&&view==='library'?'Le bon mouvement, pour chaque patient.':descriptions[view];$('#breadcrumb-current').textContent=labels[view];
  $('#add-exercise').innerHTML=icon('plus')+(view==='collections'?'Créer une collection':'Ajouter un exercice');
- const collectionView=view==='collections';$('#library-controls').hidden=collectionView;$('.results-options').hidden=collectionView;$('#exercise-grid').hidden=collectionView;$('#collections-grid').hidden=!collectionView;
+ const collectionView=view==='collections',settingsView=view==='settings';
+ $('#library-controls').hidden=collectionView||settingsView;$('.results-options').hidden=collectionView||settingsView;$('#exercise-grid').hidden=collectionView||settingsView;$('#collections-grid').hidden=!collectionView;
+ $('#settings-view').hidden=!settingsView;$('.results-toolbar').hidden=settingsView;$('#add-exercise').hidden=settingsView;$('#mobile-add').hidden=settingsView;
+ $('#mobile-add').innerHTML=icon('plus')+`<span>${collectionView?'Collection':'Exercice'}</span>`;
+ $('#mobile-fav-count').textContent=state.favorites.length;$('#mobile-fav-count').hidden=!state.favorites.length;
+ $('#clear-search').hidden=!query;
+ $('#grid-view').classList.toggle('selected',!listMode);$('#grid-view').setAttribute('aria-pressed',String(!listMode));$('#list-view').classList.toggle('selected',listMode);$('#list-view').setAttribute('aria-pressed',String(listMode));
+ if(settingsView){$('#collection-bar').hidden=true;$('#empty-state').hidden=true;return;}
  $('#section-title').textContent={library:'Tous les exercices',favorites:'Mes favoris',collections:'Mes collections',collection:'Exercices de la collection'}[view];
  $('#collection-bar').hidden=view!=='collection';
  if(view==='collection')$('#collection-bar').innerHTML=`<button class="text-button" data-action="back-collections">← Toutes les collections</button><div><button class="button" data-action="select-collection-exercises" data-id="${collectionId}">${icon('plus')} Gérer les exercices</button> <button class="button" data-action="export-collection" data-id="${collectionId}">${icon('download')} Exporter</button></div>`;
@@ -95,36 +142,43 @@ function render(){
  const empty=$('#empty-state');empty.hidden=count>0;
  if(!count){let title='Aucun exercice ne correspond',description='Essayez un autre mot ou retirez quelques filtres.',action='reset',label='Réinitialiser la recherche',symbol='search';if(collectionView){title='Une place pour vos idées';description='Créez une collection pour rassembler les exercices qui vont ensemble.';action='new-collection';label='Créer ma première collection';symbol='folder';}else if(view==='favorites'&&!state.favorites.length){title='Gardez vos essentiels près de vous';description='Touchez le cœur d’un exercice pour le retrouver ici.';action='library';label='Explorer la bibliothèque';symbol='heart';}else if(view==='collection'&&!currentCollection?.exerciseIds.length){title='Votre collection attend ses exercices';description='Choisissez les exercices à réunir dans cette collection.';action='select-collection-exercises';label='Ajouter des exercices';symbol='folder';}empty.innerHTML=`${icon(symbol)}<h3>${title}</h3><p>${description}</p><button class="button primary" data-action="${action}" data-id="${collectionId||''}">${label}</button>`;}
 }
-function toggleFavorite(id){if(!exercise(id))return;const exists=state.favorites.includes(id);if(change(next=>{next.favorites=exists?next.favorites.filter(key=>key!==id):[...next.favorites,id];},exists?'Exercice retiré des favoris.':'Exercice ajouté aux favoris.')){const btn=$(`#detail-dialog [data-action="favorite-detail"]`);if(btn){btn.innerHTML=icon('heart')+(exists?'Ajouter aux favoris':'Dans mes favoris');btn.setAttribute('aria-pressed',String(!exists));}}}
-function detailSection(title,content,symbol='target',className=''){return `<section class="detail-section ${className}"><h3>${icon(symbol)}${title}</h3>${content}</section>`;}
+function toggleFavorite(id){
+ if(!exercise(id))return;const exists=state.favorites.includes(id),focused=document.activeElement?.matches('.favorite-button');
+ if(change(next=>{next.favorites=exists?next.favorites.filter(key=>key!==id):[...next.favorites,id];},exists?'Exercice retiré des favoris.':'Exercice ajouté aux favoris.')){
+ const btn=$('#detail-dialog [data-action="favorite-detail"]');
+ if(btn){btn.innerHTML=icon('heart')+`<span>${exists?'Ajouter aux favoris':'Dans mes favoris'}</span>`;btn.setAttribute('aria-pressed',String(!exists));btn.setAttribute('aria-label',exists?'Ajouter aux favoris':'Retirer des favoris');}
+ if(focused)($(`.favorite-button[data-id="${id}"]`)||$('.favorite-button')||$('#main')).focus({preventScroll:true});
+ }
+}
+function detailSection(title,content,symbol='target',className='',id=''){return `<section class="detail-section ${className}" ${id?`id="${id}" tabindex="-1"`:''}><h3>${icon(symbol)}${title}</h3>${content}</section>`;}
 function openDetail(id){
  const e=exercise(id);if(!e)return;detailId=id;
  const dosageLabels={sets:'Séries',reps:'Répétitions',duration:'Durée',rest:'Récupération',intensity:'Intensité'};
  const dosage=`<dl class="dosage-grid">${Object.entries(dosageLabels).map(([key,label])=>`<div><dt>${label}</dt><dd>${escape(e.dosage[key]||'À adapter')}</dd></div>`).join('')}</dl>`;
  const related=e.related.map(key=>exercise(key)).filter(Boolean);
  const others=state.categories.filter(c=>!['goal','level','equipment','position','muscles','capacity'].includes(c.id)&&e.tags[c.id]?.length);
- $('#detail-content').innerHTML=heading(e.name,e.subtitle,'detail-dialog')+`<div class="detail-body"><div class="detail-top"><div class="detail-art">${imageMarkup(e,true)}${e.media.type==='illustration'?'<span class="art-note">Illustration schématique — se référer aux consignes</span>':''}</div><div class="detail-lead"><h3>Objectif principal</h3><p>${escape(e.objective||'À renseigner')}</p><div class="detail-tags">${[...e.tags.goal,...e.tags.level].map(t=>`<span class="tag">${escape(t)}</span>`).join('')}</div><div class="dosage-box"><h3>Dosage · repères à individualiser</h3>${dosage}</div></div></div><div class="detail-sections">`+
- detailSection('Position de départ',`<p>${escape(e.start||'À renseigner')}</p><div class="detail-tags">${e.tags.position.map(t=>`<span class="tag">${escape(t)}</span>`).join('')}</div>`,'person')+
+ $('#detail-content').innerHTML=heading(e.name,e.subtitle,'detail-dialog')+`<nav class="detail-shortcuts" aria-label="Accès rapide dans la fiche"><button data-action="detail-jump" data-target="detail-start">Consignes</button><button data-action="detail-jump" data-target="detail-dosage">Dosage</button><button data-action="detail-jump" data-target="detail-precautions">Vigilance</button></nav><div class="detail-body"><div class="detail-top"><div class="detail-art">${imageMarkup(e,true)}${e.media.type==='illustration'?'<span class="art-note">Illustration schématique — se référer aux consignes</span>':''}</div><div class="detail-lead"><h3>Objectif principal</h3><p>${escape(e.objective||'À renseigner')}</p><div class="detail-tags">${[...e.tags.goal,...e.tags.level].map(t=>`<span class="tag">${escape(t)}</span>`).join('')}</div><div class="dosage-box" id="detail-dosage" tabindex="-1"><h3>Dosage · repères à individualiser</h3>${dosage}</div></div></div><div class="detail-sections">`+
+ detailSection('Position de départ',`<p>${escape(e.start||'À renseigner')}</p><div class="detail-tags">${e.tags.position.map(t=>`<span class="tag">${escape(t)}</span>`).join('')}</div>`,'person','','detail-start')+
  detailSection('Objectifs secondaires',`<p>${escape(e.secondary||'Non renseignés')}</p>`,'target')+
  detailSection('Réalisation',`<ol>${e.steps.map(step=>`<li>${escape(step)}</li>`).join('')||'<li>Consignes à renseigner.</li>'}</ol>`,'list','wide')+
  detailSection('Groupes musculaires',`<p>${escape(e.tags.muscles.join(' · ')||'À renseigner')}</p>`,'strength')+
  detailSection('Capacités motrices',`<p>${escape(e.tags.capacity.join(' · ')||'À renseigner')}</p>`,'activity')+
  detailSection('Matériel',`<p><strong>Indispensable :</strong> ${escape(e.tags.equipment.join(', ')||'À préciser')}<br><strong>Facultatif :</strong> ${escape(e.optional||'Aucun renseigné')}</p>`,'archive')+
  detailSection('Critères de réussite',`<p>${escape(e.success||'À renseigner')}</p>`,'check')+
- detailSection('Précautions & points de vigilance',`<p>${escape(e.precautions||'À renseigner selon l’évaluation clinique.')}</p>`,'alert','wide precautions')+
+ detailSection('Précautions & points de vigilance',`<p>${escape(e.precautions||'À renseigner selon l’évaluation clinique.')}</p>`,'alert','wide precautions','detail-precautions')+
  detailSection('Pour simplifier',`<p>${escape(e.easier||'À renseigner')}</p>`,'leaf')+
  detailSection('Pour progresser',`<p>${escape(e.harder||'À renseigner')}</p>`,'activity')+
  (related.length?detailSection('Exercices & progressions liés',related.map(item=>`<button class="button variant-link" data-action="detail" data-id="${item.id}">${escape(item.name)} ${icon('arrow')}</button>`).join(''),'link','wide'):'')+
  others.map(c=>detailSection(escape(c.name),`<p>${escape(e.tags[c.id].join(' · '))}</p>`,'tag')).join('')+
  detailSection('Commentaires personnels',`<p>${escape(e.comments||'Aucun commentaire. Utilisez « Modifier » pour ajouter vos observations sur l’exercice.')}</p>`,'edit','wide')+
- `</div><p class="clinical-note">Ces repères ne constituent pas une prescription. Le choix de l’exercice, l’assistance et le dosage reposent sur votre évaluation clinique. Les illustrations sont schématiques.</p></div><div class="detail-actions"><button class="button" data-action="favorite-detail" data-id="${id}" aria-pressed="${state.favorites.includes(id)}">${icon('heart')}${state.favorites.includes(id)?'Dans mes favoris':'Ajouter aux favoris'}</button><button class="button" data-action="add-to-collection" data-id="${id}">${icon('folder')} Collection</button><button class="button" data-action="print" data-id="${id}">${icon('print')} Imprimer</button><button class="button primary push-right" data-action="edit" data-id="${id}">${icon('edit')} Modifier</button></div>`;
- showDialog('#detail-dialog');$('#detail-dialog').scrollTop=0;
+ `</div><p class="clinical-note">Ces repères ne constituent pas une prescription. Le choix de l’exercice, l’assistance et le dosage reposent sur votre évaluation clinique. Les illustrations sont schématiques.</p></div><div class="detail-actions"><button class="button" data-action="favorite-detail" data-id="${id}" aria-pressed="${state.favorites.includes(id)}" aria-label="${state.favorites.includes(id)?'Retirer des favoris':'Ajouter aux favoris'}">${icon('heart')}<span>${state.favorites.includes(id)?'Dans mes favoris':'Ajouter aux favoris'}</span></button><button class="button" data-action="add-to-collection" data-id="${id}">${icon('folder')} Collection</button><button class="button" data-action="print" data-id="${id}">${icon('print')} Imprimer</button><button class="button primary push-right" data-action="edit" data-id="${id}">${icon('edit')} Modifier</button><button class="button mobile-detail-more" data-action="detail-menu" data-id="${id}" aria-label="Autres actions sur la fiche">${icon('more')}</button></div>`;
+ showDialog('#detail-dialog');$('#detail-dialog').scrollTop=0;$('#detail-dialog .detail-body').scrollTop=0;
 }
 function field(name,label,value='',options={}){
  const control=options.textarea?`<textarea name="${name}" rows="${options.rows||3}" ${options.required?'required':''} maxlength="20000">${escape(value)}</textarea>`:`<input name="${name}" value="${escape(value)}" ${options.required?'required':''} maxlength="${options.max||300}" ${options.placeholder?`placeholder="${escape(options.placeholder)}"`:''}>`;
  return `<label class="form-field ${options.full?'full':''}"><span>${label}${options.required?' *':''}</span>${control}${options.help?`<small>${escape(options.help)}</small>`:''}</label>`;
 }
-function editorTagGroup(c,selected=[]){return `<fieldset class="form-tags" data-category-group="${c.id}"><legend>${escape(c.name)}</legend><div class="check-options">${c.tags.map(t=>`<label class="check-chip"><input type="checkbox" name="tag:${c.id}" value="${escape(t)}" ${selected.includes(t)?'checked':''}>${escape(t)}</label>`).join('')}</div><div class="form-tag-input"><input type="text" maxlength="120" data-new-tag="${c.id}" placeholder="Ajouter un tag…" aria-label="Nouveau tag : ${escape(c.name)}"><button type="button" data-action="editor-add-tag" data-key="${c.id}" aria-label="Ajouter le tag à ${escape(c.name)}">+</button></div></fieldset>`;}
+function editorTagGroup(c,selected=[]){return `<fieldset class="form-tags" data-category-group="${c.id}"><legend>${escape(c.name)}</legend><div class="check-options">${c.tags.map(t=>`<label class="check-chip"><input type="${c.id==='level'?'radio':'checkbox'}" name="tag:${c.id}" value="${escape(t)}" ${selected.includes(t)?'checked':''}>${escape(t)}</label>`).join('')}</div><div class="form-tag-input"><input type="text" maxlength="120" data-new-tag="${c.id}" placeholder="Ajouter un tag…" aria-label="Nouveau tag : ${escape(c.name)}"><button type="button" data-action="editor-add-tag" data-key="${c.id}" aria-label="Ajouter le tag à ${escape(c.name)}">+</button></div></fieldset>`;}
 function openEditor(id=null){
  const e=id?exercise(id):null;if(id&&!e)return;editorId=id;editorCategories=M.clone(state.categories);pendingMedia=e?.media||{type:'illustration',src:''};
  const names={sitstand:'Assis-debout',knee:'Extension du genou',tandem:'Équilibre debout',arms:'Élévation des bras',march:'Marche avec appui',ball:'Ballon assis',heels:'Relevé de talons',band:'Élastique assis',shift:'Transfert latéral',seatedmarch:'Marche assise',squat:'Flexions debout',step:'Marche basse',ankle:'Cheville assis',hands:'Préhension',lying:'Allongé',walking:'Parcours de marche'};
@@ -133,7 +187,7 @@ function openEditor(id=null){
  field('subtitle','Description courte',e?.subtitle,{full:true,max:300,placeholder:'Une phrase pour retrouver l’intention de l’exercice'})+
  field('objective','Objectif principal',e?.objective,{required:true,textarea:true})+
  field('secondary','Objectifs secondaires',e?.secondary,{textarea:true})+
- '<div class="form-divider">Classer l’exercice</div>'+editorCategories.map(c=>editorTagGroup(c,e?.tags[c.id]||[])).join('')+
+ '<div class="form-divider">Classer l’exercice</div>'+editorCategories.map(c=>`<details class="editor-tag-section" ${!phoneMedia.matches||['goal','level','equipment','position'].includes(c.id)?'open':''}><summary>${escape(c.name)}${icon('chevron')}</summary>${editorTagGroup(c,e?.tags[c.id]||[])}</details>`).join('')+
  '<div class="form-divider">Position & réalisation</div>'+
  field('start','Position de départ',e?.start,{textarea:true,full:true})+
  field('steps','Consignes de réalisation',e?.steps?.join('\n'),{textarea:true,rows:4,full:true,help:'Une étape par ligne.'})+
@@ -188,11 +242,18 @@ function openBackup(){pendingImport=null;utility('Sauvegarde & données','Votre 
 function download(content,filename,type='application/json'){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);}
 function exportData(id=null){let exported=M.clone(state),filename=`kine-sauvegarde-${new Date().toISOString().slice(0,10)}.json`;if(id){const c=exported.collections.find(item=>item.id===id);if(!c)return;const ids=new Set(c.exerciseIds);exported.exercises=exported.exercises.filter(e=>ids.has(e.id));exported.exercises.forEach(e=>e.related=e.related.filter(key=>ids.has(key)));exported.favorites=exported.favorites.filter(key=>ids.has(key));exported.collections=[c];filename=`kine-collection-${M.fold(c.name).replace(/[^a-z0-9]+/g,'-')||'selection'}.json`;}download(JSON.stringify({...exported,exportedAt:new Date().toISOString()},null,2),filename);toast('Sauvegarde téléchargée. Conservez ce fichier dans un endroit sûr.');}
 async function prepareImport(event){const file=event.target.files[0],preview=$('#import-preview');preview.style.color='';pendingImport=null;if(!file)return;try{if(file.size>15*1024*1024)throw new Error('Le fichier dépasse 15 Mo.');pendingImport=M.validateState(JSON.parse(await file.text()));preview.innerHTML=`<p style="margin-top:14px;color:var(--green)">${pendingImport.exercises.length} exercices · ${pendingImport.favorites.length} favoris · ${pendingImport.collections.length} collections vérifiés.</p><p style="margin-top:8px">Cette action remplacera entièrement la bibliothèque de cet appareil. Exportez d’abord vos données actuelles pour les conserver.</p><button class="button primary" data-action="confirm-import">Remplacer mes données par cette sauvegarde</button>`;}catch(error){preview.textContent=`Import impossible : ${error instanceof SyntaxError?'le fichier n’est pas un JSON valide.':error.message}`;preview.style.color='#a54c3e';}}
-function confirmImport(){if(!pendingImport)return;const wasBlocked=blockedStorage;blockedStorage=false;if(save(pendingImport,'Sauvegarde restaurée.')){pendingImport=null;closeDialog('#utility-dialog');closeDialog('#editor-dialog');closeDialog('#detail-dialog');view='library';collectionId=null;resetFilters();}else blockedStorage=wasBlocked;}
+function confirmImport(){if(!pendingImport)return;const wasBlocked=blockedStorage;blockedStorage=false;if(save(pendingImport,'Sauvegarde restaurée.')){pendingImport=null;closeDialog('#utility-dialog');closeDialog('#editor-dialog');closeDialog('#detail-dialog');viewMemory.clear();view='library';collectionId=null;resetFilters();}else blockedStorage=wasBlocked;}
 function printExercise(id){const e=exercise(id);if(!e)return;const section=(title,body)=>`<section><h2>${title}</h2>${body}</section>`;$('#print-sheet').innerHTML=`<div class="print-header"><strong>KINÉ · BIBLIOTHÈQUE D’EXERCICES</strong><h1>${escape(e.name)}</h1><p>${escape(e.subtitle)}</p></div><div class="print-art">${e.media.type==='image'?imageMarkup(e):A.draw(e.art,e.palette)}</div>`+section('Objectifs',`<p><strong>Principal :</strong> ${escape(e.objective)}<br><strong>Secondaires :</strong> ${escape(e.secondary)}</p>`)+section('Position de départ',`<p>${escape(e.start)}</p>`)+section('Réalisation',`<ol>${e.steps.map(step=>`<li>${escape(step)}</li>`).join('')}</ol>`)+section('Dosage · repères à individualiser',`<dl>${Object.entries({sets:'Séries',reps:'Répétitions',duration:'Durée',rest:'Récupération',intensity:'Intensité'}).map(([key,label])=>`<div><dt>${label}</dt><dd>${escape(e.dosage[key]||'À adapter')}</dd></div>`).join('')}</dl>`)+section('Classification',`<p>${state.categories.map(c=>`<strong>${escape(c.name)} :</strong> ${escape(e.tags[c.id].join(', ')||'—')}`).join('<br>')}</p>`)+section('Matériel facultatif',`<p>${escape(e.optional||'Non renseigné')}</p>`)+section('Critères de réussite',`<p>${escape(e.success||'À renseigner')}</p>`)+section('Précautions',`<p>${escape(e.precautions||'À adapter à l’évaluation clinique.')}</p>`)+section('Variantes & progressions',`<p><strong>Plus facile :</strong> ${escape(e.easier)}<br><strong>Plus difficile :</strong> ${escape(e.harder)}${e.related.length?'<br><strong>Fiches liées :</strong> '+e.related.map(key=>escape(exercise(key)?.name||'')).join(', '):''}</p>`)+section('Commentaires personnels',`<p>${escape(e.comments||'—')}</p>`)+`<p class="print-footer">Support d’organisation professionnelle, sans prescription automatique. Exercice, assistance et dosage à adapter à l’évaluation clinique. Illustration schématique. Imprimé le ${new Date().toLocaleDateString('fr-FR')}.</p>`;window.print();}
 function handleAction(event){
  const button=event.target.closest('[data-action]');if(!button)return;const {action,id,key,value,dialog}=button.dataset;
  switch(action){
+ case 'new-entry':view==='collections'?openCollectionEditor():openEditor();break;
+ case 'apply-mobile-filters':applyMobileFilters();break;
+ case 'clear-mobile-filters':draftFilters={};$$('#mobile-filter-fields input').forEach(input=>{input.checked=false;});updateFilterPreview();break;
+ case 'detail-jump':{const target=document.getElementById(button.dataset.target);target?.scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});target?.focus({preventScroll:true});break;}
+ case 'detail-menu':utility('Actions sur la fiche',exercise(id)?.name||'',`<div class="sheet-menu"><button class="settings-link" data-action="mobile-edit" data-id="${id}">${icon('edit')}<span>Modifier l’exercice</span>${icon('chevron')}</button><button class="settings-link" data-action="mobile-print" data-id="${id}">${icon('print')}<span>Imprimer ou enregistrer en PDF</span>${icon('chevron')}</button></div>`,'detail-menu');break;
+ case 'mobile-edit':closeDialog('#utility-dialog');openEditor(id);break;
+ case 'mobile-print':closeDialog('#utility-dialog');printExercise(id);break;
  case 'close':closeDialog(`#${dialog}`);break;
  case 'filter':toggleFilter(key,value);break;
  case 'all-goals':filters.goal=[];renderControls();render();break;
@@ -232,10 +293,12 @@ document.addEventListener('submit',event=>{
  else if(form.id==='membership-form'){event.preventDefault();const selected=new FormData(form).getAll('collection'),id=form.dataset.id;if(change(next=>{next.collections.forEach(c=>{c.exerciseIds=c.exerciseIds.filter(key=>key!==id);if(selected.includes(c.id))c.exerciseIds.push(id);});},'Collections mises à jour.'))closeDialog('#utility-dialog');}
  else if(form.id==='collection-exercises-form'){event.preventDefault();const selected=new FormData(form).getAll('exercise'),id=form.dataset.id;if(change(next=>{next.collections.find(c=>c.id===id).exerciseIds=selected;},'Sélection enregistrée.'))closeDialog('#utility-dialog');}
 });
-document.addEventListener('change',event=>{const el=event.target;if(el.dataset.filter)toggleFilter(el.dataset.filter,el.value);if(el.id==='media-file')readMedia(event);if(el.id==='import-file')prepareImport(event);});
+document.addEventListener('change',event=>{const el=event.target;if(el.dataset.mobileFilter&&draftFilters){const key=el.dataset.mobileFilter,values=draftFilters[key]||[];draftFilters[key]=el.checked?M.unique([...values,el.value]):values.filter(value=>value!==el.value);updateFilterPreview();}if(el.dataset.filter)toggleFilter(el.dataset.filter,el.value);if(el.id==='media-file')readMedia(event);if(el.id==='import-file')prepareImport(event);});
 $('#search').addEventListener('input',event=>{query=event.target.value;render();});
+$('#clear-search').addEventListener('click',()=>{query='';$('#search').value='';render();$('#search').focus();});
+$('#search').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();event.target.blur();}});
 $('#sort').addEventListener('change',event=>{sort=event.target.value;render();});
-$('#toggle-filters').addEventListener('click',()=>{const panel=$('#filter-panel');panel.hidden=!panel.hidden;$('#toggle-filters').setAttribute('aria-expanded',String(!panel.hidden));});
+$('#toggle-filters').addEventListener('click',()=>{if(phoneMedia.matches){openMobileFilters();return;}const panel=$('#filter-panel');panel.hidden=!panel.hidden;$('#toggle-filters').setAttribute('aria-expanded',String(!panel.hidden));});
 $('#reset-filters').addEventListener('click',resetFilters);
 $('#grid-view').addEventListener('click',()=>{listMode=false;$('#grid-view').classList.add('selected');$('#list-view').classList.remove('selected');$('#grid-view').setAttribute('aria-pressed','true');$('#list-view').setAttribute('aria-pressed','false');render();});
 $('#list-view').addEventListener('click',()=>{listMode=true;$('#list-view').classList.add('selected');$('#grid-view').classList.remove('selected');$('#list-view').setAttribute('aria-pressed','true');$('#grid-view').setAttribute('aria-pressed','false');render();});
@@ -244,8 +307,18 @@ $('.brand').addEventListener('click',event=>{event.preventDefault();go('library'
 $('#add-exercise').addEventListener('click',()=>view==='collections'?openCollectionEditor():openEditor());
 $('#manage-tags').addEventListener('click',openTags);$('#backup-button').addEventListener('click',openBackup);
 $$('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target!==dialog)return;const rect=dialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();}));
-document.addEventListener('keydown',event=>{const editing=event.target.closest('input,textarea,select,[contenteditable]');if(event.key==='/'&&!editing&&!$('dialog[open]')&&view!=='collections'){event.preventDefault();$('#search').focus();}if(event.key==='Enter'&&event.target.dataset.newTag){event.preventDefault();addEditorTag(event.target.dataset.newTag);}});
+document.addEventListener('keydown',event=>{const editing=event.target.closest('input,textarea,select,[contenteditable]');if(event.key==='/'&&!editing&&!$('dialog[open]')&&view!=='collections'&&view!=='settings'){event.preventDefault();$('#search').focus();}if(event.key==='Enter'&&event.target.dataset.newTag){event.preventDefault();addEditorTag(event.target.dataset.newTag);}});
 window.addEventListener('storage',event=>{if(event.key!==KEY||!event.newValue)return;if($('#editor-dialog').open||$('#utility-dialog').open){toast('La bibliothèque a changé dans un autre onglet. Fermez votre formulaire et rechargez avant de modifier les données.');blockedStorage=true;return;}try{state=M.validateState(JSON.parse(event.newValue));resetFilters();if($('#detail-dialog').open){if(exercise(detailId))openDetail(detailId);else closeDialog('#detail-dialog');}toast('Bibliothèque actualisée depuis un autre onglet.');}catch{toast('Les nouvelles données d’un autre onglet sont invalides.');}});
-$('.page-footer').insertAdjacentHTML('beforeend',`<div class="mobile-tools"><button class="text-button" data-action="tags">Catégories & tags</button><button class="text-button" data-action="backup">Sauvegarde & données</button></div>`);
+
+$$('dialog').forEach(dialog=>dialog.addEventListener('close',()=>{if(dialog.id==='filters-dialog'){$('#toggle-filters').setAttribute('aria-expanded','false');draftFilters=null;}queueMicrotask(syncModalHistory);}));
+window.addEventListener('popstate',event=>{
+ const automatic=historyClosing;historyClosing=false;modalHistory=Boolean(event.state?.kineOverlay);
+ if(!automatic){const dialogs=$$('dialog[open]');dialogs.at(-1)?.close();}
+ if(!$('dialog[open]')&&modalHistory){history.replaceState({...(history.state||{}),kineOverlay:false},'');modalHistory=false;}
+ queueMicrotask(syncModalHistory);
+});
+phoneMedia.addEventListener('change',()=>{renderControls();render();});
+if(window.visualViewport){const updateKeyboard=()=>{const editing=document.activeElement?.matches('input:not([type="checkbox"]):not([type="radio"]),textarea,select');document.body.classList.toggle('keyboard-open',Boolean(editing&&window.innerHeight-window.visualViewport.height>120));};window.visualViewport.addEventListener('resize',updateKeyboard);document.addEventListener('focusout',()=>requestAnimationFrame(updateKeyboard));}
+
 hydrate();renderControls();render();if(storageProblem)setTimeout(()=>toast(storageProblem),500);
 })();
