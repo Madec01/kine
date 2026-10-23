@@ -247,6 +247,7 @@ function printExercise(id){const e=exercise(id);if(!e)return;const section=(titl
 function handleAction(event){
  const button=event.target.closest('[data-action]');if(!button)return;const {action,id,key,value,dialog}=button.dataset;
  switch(action){
+ case 'install':window.KinePWA?.open();break;
  case 'new-entry':view==='collections'?openCollectionEditor():openEditor();break;
  case 'apply-mobile-filters':applyMobileFilters();break;
  case 'clear-mobile-filters':draftFilters={};$$('#mobile-filter-fields input').forEach(input=>{input.checked=false;});updateFilterPreview();break;
@@ -321,4 +322,5 @@ phoneMedia.addEventListener('change',()=>{renderControls();render();});
 if(window.visualViewport){const updateKeyboard=()=>{const editing=document.activeElement?.matches('input:not([type="checkbox"]):not([type="radio"]),textarea,select');document.body.classList.toggle('keyboard-open',Boolean(editing&&window.innerHeight-window.visualViewport.height>120));};window.visualViewport.addEventListener('resize',updateKeyboard);document.addEventListener('focusout',()=>requestAnimationFrame(updateKeyboard));}
 
 hydrate();renderControls();render();if(storageProblem)setTimeout(()=>toast(storageProblem),500);
+window.KinePWA?.init({openDialog:body=>utility('Kiné sur votre téléphone','Votre bibliothèque, à portée de main.',body,'install'),notify:toast});
 })();

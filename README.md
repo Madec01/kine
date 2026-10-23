@@ -4,6 +4,8 @@ Application personnelle en **HTML, CSS et JavaScript**, destinée à organiser d
 
 ## Utilisation
 
+L’application est publiée sur **<https://madec01.github.io/kine/>**, depuis la branche `main` avec GitHub Pages.
+
 Ouvrir `index.html` dans un navigateur récent. Pour une origine de stockage stable, utiliser de préférence un hébergement statique ou un serveur local :
 
 ```sh
@@ -16,6 +18,7 @@ Puis ouvrir <http://localhost:8765>. Conserver la même adresse et le même navi
 
 - Interface conçue pour le téléphone : navigation en bas, liste illustrée lisible, recherche persistante et filtres avec aperçu des résultats. Grille et liste disponibles sur ordinateur.
 - Fiches plein écran sur mobile, raccourcis Consignes / Dosage / Vigilance, retour du navigateur et recherche conservée entre les onglets.
+- Installation sur l’écran d’accueil et accès hors connexion après le premier chargement complet.
 - 16 fiches d’exemple modifiables, avec tous les champs du cahier des charges.
 - Recherche libre sans distinction de casse ou d’accent, tri et sept catégories de filtres combinables.
 - **ET entre catégories, OU entre tags d’une catégorie**, comme indiqué dans l’interface.
@@ -28,6 +31,19 @@ Puis ouvrir <http://localhost:8765>. Conserver la même adresse et le même navi
 - Export JSON de toute la bibliothèque ou d’une collection et restauration d’une sauvegarde validée.
 
 Les données sont conservées dans `localStorage`, sous la clé `kine-library-v1`. Une écriture refusée par le navigateur affiche une erreur et conserve l’état précédent en mémoire. Les images importées sont intégrées à la sauvegarde ; les vidéos et images externes restent des liens.
+
+## Installation sur téléphone
+
+Ouvrir <https://madec01.github.io/kine/>, puis **Mon espace → Installer Kiné**.
+
+- **Android (Chrome)** : toucher le bouton d’installation proposé, ou utiliser le menu **⋮ → Ajouter à l’écran d’accueil / Installer l’application**.
+- **iPhone / iPad (Safari)** : toucher **Partager → Sur l’écran d’accueil → Ajouter**. Selon la version, Partager se trouve dans le menu `…` ; activer **Ouvrir comme app web** si cette option apparaît.
+
+Kiné s’ouvre ensuite depuis son icône, dans une fenêtre dédiée. L’installation dépend du navigateur ; les instructions restent disponibles si le bouton natif n’est pas proposé. Dans l’aide d’installation, attendre **Prêt hors connexion** avant de couper le réseau.
+
+Les fiches, illustrations intégrées, photos importées, favoris, collections, recherche et édition fonctionnent hors connexion. Les médias par URL externe nécessitent une connexion ; les polices utilisent leur repli système hors ligne. L’application conserve les données sur l’appareil : si le navigateur et l’application installée utilisent des espaces séparés, passer par l’export/import JSON pour les transférer.
+
+Les mises à jour se téléchargent en arrière-plan. Elles s’appliquent après fermeture de toutes les fenêtres de Kiné, à la prochaine ouverture, sans rechargement imposé pendant une saisie. Elles ne modifient pas les données personnelles enregistrées. Le navigateur peut libérer son stockage local : l’export reste le moyen de conserver une sauvegarde.
 
 ## Sauvegarde et changement d’appareil
 
@@ -48,7 +64,10 @@ Les exemples initiaux sont copiés uniquement lorsqu’aucune sauvegarde locale 
 | `illustrations.js` | Illustrations SVG originales |
 | `model.js` | Validation des sauvegardes, recherche et filtres |
 | `app.js` | Interface, édition et stockage |
-| `assets/` | Icône du site |
+| `manifest.webmanifest` | Identité, icônes et lancement de l’application installée |
+| `pwa.js`, `pwa.css` | Installation, aide adaptée au téléphone et état hors connexion |
+| `sw.js` | Cache de l’application et mises à jour sans interruption |
+| `assets/` | Icônes du site et de l’application (dont une icône Android maskable) |
 
 Les polices DM Sans et Manrope sont chargées via Google Fonts avec un repli sur les polices du système. La bibliothèque reste fonctionnelle si les polices externes sont indisponibles.
 
@@ -68,11 +87,17 @@ Tests des parcours dans Chromium, après lancement du serveur local ci-dessus, s
 ```sh
 python tests/browser.py
 python tests/mobile.py
+npm run build
+python tests/pwa.py
 ```
 
 Le chemin du navigateur peut être adapté avec `CHROMIUM_PATH`, et l’URL avec `KINE_TEST_URL`. Les captures et le PDF de contrôle sont produits dans `test-results/`, exclu du dépôt.
 
 Les [choix d’ergonomie mobile](docs/ergonomie-mobile.md) détaillent les références consultées et les vérifications.
+
+Le test PWA crée son propre serveur local sous `/kine/`, vérifie le manifeste et les icônes, le démarrage et l’édition hors connexion, la conservation des données et l’activation différée des mises à jour. Les interactions avec les dialogues d’installation natifs et les signaux iOS sont simulés dans Chromium ; ils ne remplacent pas un essai sur un téléphone physique.
+
+**Lors d’une modification des fichiers de l’application, incrémenter `VERSION` dans `sw.js`.** Le service worker précache uniquement les fichiers de ce site, avec un nom de cache propre au chemin de déploiement ; il ne supprime pas les caches des autres projets GitHub Pages. Une installation incomplète conserve l’ancienne version. Un hébergement HTTPS (ou localhost) est nécessaire pour l’installation et le mode hors connexion ; l’ouverture par `file://` ne les active pas.
 
 ## Cadre d’usage
 

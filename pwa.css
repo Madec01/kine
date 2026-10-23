@@ -1,0 +1,21 @@
+/* Installation shares the existing accessible settings sheet. */
+.install-link{border-color:#b9cda9;background:#f4f8ee}
+.install-brand{display:flex;align-items:center;gap:16px;margin-bottom:22px}
+.install-brand img{flex-shrink:0;border-radius:16px}
+.install-brand strong{font-size:17px;line-height:1.5}
+.install-panel p{font-size:15px;line-height:1.7;margin:8px 0 0}
+.install-primary{width:100%;min-height:48px;margin-bottom:14px}
+.install-steps{padding-left:24px;margin:0 0 18px;font-size:16px;line-height:1.7}
+.install-steps li{padding-left:4px;margin:0 0 12px}
+.install-panel .install-hint{font-size:13px;color:#5e7054;line-height:1.7}
+.install-offline{padding:18px;border:1px solid #dce6d3;background:#f5f8f0;border-radius:14px;margin:22px 0}
+.install-offline strong{font-size:16px}
+.install-offline .button{margin-top:14px;min-height:48px;white-space:normal}
+.install-success{padding:16px;border-radius:12px;background:#eef5e4;color:#36592e}
+.install-result:empty{display:none}
+.install-other{margin-top:12px}.install-other summary{min-height:44px;padding:12px 0;font-size:15px;cursor:pointer}
+@media (max-width:840px), (max-width:1000px) and (pointer:coarse){
+  .sidebar>.install-nav{display:none}
+  .install-brand{align-items:flex-start;gap:12px}.install-brand img{width:52px;height:52px;border-radius:13px}
+  .install-brand strong{font-size:16px}.install-brand p{font-size:14px}
+}

@@ -5,7 +5,7 @@ const root=dirname(fileURLToPath(import.meta.url));
 const destination=resolve(root,'dist');
 rmSync(destination,{recursive:true,force:true});
 mkdirSync(destination,{recursive:true});
-for(const path of ['index.html','styles.css','mobile.css','data.js','model.js','illustrations.js','app.js','assets']){
+for(const path of ['index.html','styles.css','mobile.css','pwa.css','data.js','model.js','illustrations.js','app.js','pwa.js','sw.js','manifest.webmanifest','assets']){
   cpSync(resolve(root,path),resolve(destination,path),{recursive:true});
 }
 console.log('Site statique préparé dans dist/.');

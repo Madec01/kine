@@ -4,14 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#245c4e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Kiné">
   <meta name="description" content="Votre bibliothèque personnelle d’exercices de kinésithérapie, pensée pour la rééducation gériatrique et la pratique en EHPAD.">
   <title>Kiné — Bibliothèque d’exercices</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-180.png" sizes="180x180">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="mobile.css">
+  <link rel="stylesheet" href="pwa.css">
   <script defer src="data.js"></script>
   <script defer src="model.js"></script>
   <script defer src="illustrations.js"></script>
+  <script defer src="pwa.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -30,6 +37,7 @@
     <p class="nav-label">MON ORGANISATION</p>
     <button class="nav-item" id="manage-tags"><span data-icon="tag"></span> Catégories & tags</button>
     <button class="nav-item" id="backup-button"><span data-icon="archive"></span> Sauvegarde & données</button>
+    <button class="nav-item install-nav" data-action="install"><span data-icon="download"></span> <span data-install-label>Installer Kiné</span></button>
     <div class="sidebar-bottom"><div class="practice-note"><span data-icon="leaf"></span><strong>Chaque mouvement compte.</strong><p>Un outil pensé pour votre pratique, au rythme de vos patients.</p></div><div class="storage-status"><span class="status-dot"></span><span>Enregistré sur cet appareil<small>Vos données restent dans ce navigateur</small></span></div></div>
   </aside>
   <div class="app-shell">
@@ -50,6 +58,7 @@
       <div class="empty-state" id="empty-state" hidden></div>
       <section id="settings-view" class="settings-view" hidden aria-label="Mon espace">
         <p class="settings-intro">Tout pour organiser et conserver votre bibliothèque.</p>
+        <button class="settings-link install-link" data-action="install"><span class="settings-symbol"><span data-icon="download"></span></span><span><strong data-install-label>Installer Kiné</strong><small>Sur l’écran d’accueil · accès hors connexion</small></span><span data-icon="chevron"></span></button>
         <button class="settings-link" data-action="backup"><span class="settings-symbol"><span data-icon="archive"></span></span><span><strong>Sauvegarde & données</strong><small>Exporter, importer et changer d’appareil</small></span><span data-icon="chevron"></span></button>
         <button class="settings-link" data-action="tags"><span class="settings-symbol"><span data-icon="tag"></span></span><span><strong>Catégories & tags</strong><small>Personnaliser vos repères de recherche</small></span><span data-icon="chevron"></span></button>
         <div class="settings-storage"><span data-icon="lock"></span><div><strong>Votre bibliothèque, sur cet appareil</strong><p>Vos modifications sont enregistrées dans ce navigateur. Exportez une sauvegarde pour les conserver ou les transférer sur un autre téléphone.</p></div></div>
