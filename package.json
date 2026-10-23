@@ -1,0 +1,12 @@
+{
+  "name": "kine-bibliotheque",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bibliothèque personnelle d’exercices de kinésithérapie en HTML, CSS et JavaScript",
+  "scripts": {
+    "test": "node --test tests/model.test.cjs",
+    "build": "node build.mjs",
+    "start": "python -m http.server 8765"
+  },
+  "engines": { "node": ">=18" }
+}
