@@ -1,106 +1,119 @@
 # Kiné · Bibliothèque d’exercices
 
-Application personnelle en **HTML, CSS et JavaScript**, destinée à organiser des exercices de kinésithérapie en gériatrie et en EHPAD. Aucun framework, compte ni serveur de données requis.
+Application web privée pour constituer **sa propre bibliothèque d’exercices de kinésithérapie en gériatrie**, utilisable sur ordinateur, téléphone et tablette, et partageable avec des collègues.
 
-## Utilisation
+La bibliothèque est **entièrement vide au départ** : exercices, familles de tags et tags sont créés par l’utilisateur. Aucun contenu n’est prérempli.
 
-L’application est publiée sur **<https://madec01.github.io/kine/>**, depuis la branche `main` avec GitHub Pages.
+## Ce que fait l’application
 
-Ouvrir `index.html` dans un navigateur récent. Pour une origine de stockage stable, utiliser de préférence un hébergement statique ou un serveur local :
+- **Exercices** : création, modification, duplication, suppression. Champs : nom, description, consignes, position de départ, matériel, dosage (séries, répétitions, durée, récupération), difficulté, variantes, progressions, précautions, notes personnelles, plusieurs images et une vidéo (fichier joint ou lien). Tous les champs sauf le nom peuvent rester vides.
+- **Tags personnalisés en familles indépendantes** : familles et tags se créent, se renomment, se déplacent et se suppriment librement ; les associations sont mises à jour automatiquement. Un exercice peut porter plusieurs tags d’une même famille et de plusieurs familles.
+- **Recherche multicritère** : texte (sans tenir compte des accents ni de la casse) combiné à des tags de plusieurs familles. **ET entre familles, OU à l’intérieur d’une famille** (commutable en ET), filtre de difficulté, exercices sans tag. Résultats en cartes ou en liste, filtres mémorisés dans l’adresse.
+- **Fiches PDF** : sélection temporaire d’exercices, réordonnancement, titre et sous-titre, choix des rubriques (description, consignes, dosage, images, tags, précautions, variantes, vidéo, notes), génération d’un **PDF A4** téléchargeable avec images et **QR code vers la vidéo**. Les sélections peuvent être **enregistrées et rechargées**.
+- **Sauvegarde** : export JSON complet (familles, tags, associations, exercices, images intégrées, fiches) et import (ajout ou remplacement).
+- **Partage** (mode Supabase) : propriétaire, collaborateur (consultation et modification), lecteur (consultation et PDF). Les droits sont appliqués **en base de données** par des politiques RLS, pas seulement dans l’interface.
+- **Application installable** (PWA) sur l’écran d’accueil ; l’interface fonctionne hors connexion.
 
-```sh
-python -m http.server 8765
+## Architecture
+
+| Couche | Choix | Pourquoi |
+| --- | --- | --- |
+| Interface | [Vite](https://vite.dev) + React + TypeScript, application monopage | Se publie sur un hébergement statique (le GitHub Pages déjà utilisé), sans serveur à maintenir. Next.js n’apporterait rien ici : toute la logique serveur est portée par Supabase. |
+| Données, comptes, droits | [Supabase](https://supabase.com) (PostgreSQL + Auth + Storage) | Sécurité côté serveur par RLS, stockage privé des médias, sauvegardes, export SQL possible. |
+| PDF | `@react-pdf/renderer` dans le navigateur | Fiche A4 générée directement à partir des exercices, sans serveur. |
+| Mode local | IndexedDB du navigateur | Permet d’essayer l’application sans compte ; données sur un seul appareil, **sans sécurité**. |
+
+Le code s’appuie sur une interface `Repository` (`src/data/repository.ts`) implémentée pour Supabase et pour le mode local ; la recherche, l’export et l’import sont de la logique pure testée unitairement.
+
+```
+src/
+  data/        types, interface Repository, adaptateurs Supabase et local
+  domain/      recherche multicritère, export/import
+  pdf/         document A4 et génération (chargés à la demande)
+  state/       authentification, bibliothèque, sélection, notifications
+  pages/       exercices, fiche, formulaire, tags, sélection, réglages, connexion
+  components/  mise en page, filtres, chips, dialogues…
+supabase/
+  migrations/0001_schema.sql   schéma complet (tables, triggers, RPC, RLS, bucket)
+  tests/                       vérification du schéma et des politiques sur un PostgreSQL local
+tests/
+  unit/        Vitest (recherche, export/import, dépôt local)
+  e2e/         parcours complets dans Chromium (Playwright)
 ```
 
-Puis ouvrir <http://localhost:8765>. Conserver la même adresse et le même navigateur pour retrouver les données. Le stockage sous une adresse `file://` dépend du navigateur.
+## Mise en route
 
-## Fonctions disponibles
-
-- Interface conçue pour le téléphone : navigation en bas, liste illustrée lisible, recherche persistante et filtres avec aperçu des résultats. Grille et liste disponibles sur ordinateur.
-- Fiches plein écran sur mobile, raccourcis Consignes / Dosage / Vigilance, retour du navigateur et recherche conservée entre les onglets.
-- Installation sur l’écran d’accueil et accès hors connexion après le premier chargement complet.
-- 16 fiches d’exemple modifiables, avec tous les champs du cahier des charges.
-- Recherche libre sans distinction de casse ou d’accent, tri et sept catégories de filtres combinables.
-- **ET entre catégories, OU entre tags d’une catégorie**, comme indiqué dans l’interface.
-- Favoris persistants et collections personnelles.
-- Ajout, modification et suppression de fiches dans l’interface.
-- Tags normalisés et ajout de catégories sans toucher au code.
-- Liens réciproques entre exercices, variantes et progressions.
-- Photos importées (PNG, JPEG, WebP, GIF ; 1 Mo maximum), images et vidéos par adresse HTTPS directe.
-- Impression d’une fiche, y compris ses commentaires et variantes ; enregistrement en PDF via le navigateur.
-- Export JSON de toute la bibliothèque ou d’une collection et restauration d’une sauvegarde validée.
-
-Les données sont conservées dans `localStorage`, sous la clé `kine-library-v1`. Une écriture refusée par le navigateur affiche une erreur et conserve l’état précédent en mémoire. Les images importées sont intégrées à la sauvegarde ; les vidéos et images externes restent des liens.
-
-## Installation sur téléphone
-
-Ouvrir <https://madec01.github.io/kine/>, puis **Mon espace → Installer Kiné**.
-
-- **Android (Chrome)** : toucher le bouton d’installation proposé, ou utiliser le menu **⋮ → Ajouter à l’écran d’accueil / Installer l’application**.
-- **iPhone / iPad (Safari)** : toucher **Partager → Sur l’écran d’accueil → Ajouter**. Selon la version, Partager se trouve dans le menu `…` ; activer **Ouvrir comme app web** si cette option apparaît.
-
-Kiné s’ouvre ensuite depuis son icône, dans une fenêtre dédiée. L’installation dépend du navigateur ; les instructions restent disponibles si le bouton natif n’est pas proposé. Dans l’aide d’installation, attendre **Prêt hors connexion** avant de couper le réseau.
-
-Les fiches, illustrations intégrées, photos importées, favoris, collections, recherche et édition fonctionnent hors connexion. Les médias par URL externe nécessitent une connexion ; les polices utilisent leur repli système hors ligne. L’application conserve les données sur l’appareil : si le navigateur et l’application installée utilisent des espaces séparés, passer par l’export/import JSON pour les transférer.
-
-Les mises à jour se téléchargent en arrière-plan. Elles s’appliquent après fermeture de toutes les fenêtres de Kiné, à la prochaine ouverture, sans rechargement imposé pendant une saisie. Elles ne modifient pas les données personnelles enregistrées. Le navigateur peut libérer son stockage local : l’export reste le moyen de conserver une sauvegarde.
-
-## Sauvegarde et changement d’appareil
-
-Dans **Sauvegarde & données**, télécharger un export JSON. Sur l’autre appareil, importer ce fichier, vérifier le nombre de fiches puis confirmer le remplacement. **L’import remplace toute la bibliothèque locale ; il ne fusionne pas les collections.** Exporter les données existantes avant cette opération.
-
-Il n’y a pas de synchronisation automatique, de base partagée ou de connexion utilisateur dans cette version. Le stockage est propre au navigateur et à l’adresse du site. Effacer les données du navigateur les supprime. La capacité de stockage varie selon le navigateur ; en cas de saturation, réduire les images après avoir exporté les données.
-
-Les exemples initiaux sont copiés uniquement lorsqu’aucune sauvegarde locale n’existe. Modifier `data.js` ne remplace pas les données déjà personnalisées d’un utilisateur.
-
-## Fichiers
-
-| Fichier | Rôle |
-| --- | --- |
-| `index.html` | Structure HTML et navigation |
-| `styles.css` | Présentation sur ordinateur et impression |
-| `mobile.css` | Ergonomie mobile, navigation et panneaux tactiles |
-| `data.js` | Fiches et catégories d’exemple |
-| `illustrations.js` | Illustrations SVG originales |
-| `model.js` | Validation des sauvegardes, recherche et filtres |
-| `app.js` | Interface, édition et stockage |
-| `manifest.webmanifest` | Identité, icônes et lancement de l’application installée |
-| `pwa.js`, `pwa.css` | Installation, aide adaptée au téléphone et état hors connexion |
-| `sw.js` | Cache de l’application et mises à jour sans interruption |
-| `assets/` | Icônes du site et de l’application (dont une icône Android maskable) |
-
-Les polices DM Sans et Manrope sont chargées via Google Fonts avec un repli sur les polices du système. La bibliothèque reste fonctionnelle si les polices externes sont indisponibles.
-
-## Vérification et hébergement
-
-Les fichiers peuvent être servis tels quels par un hébergeur statique, y compris GitHub Pages. Un export de déploiement est également disponible sans dépendances :
+### 1. Essayer immédiatement (mode local)
 
 ```sh
-npm test
-npm run build
+npm install
+npm run dev
 ```
 
-Le dossier `dist/` contient alors le site prêt à héberger. Node.js 18 ou supérieur suffit pour ces commandes ; il n’est pas nécessaire pour utiliser le site.
+Ouvrir <http://localhost:5173>. Sans configuration Supabase, l’application tourne en **mode local** : un bandeau « Mode local » le rappelle, les données restent dans le navigateur. Pensez à exporter une sauvegarde depuis **Réglages**.
 
-Tests des parcours dans Chromium, après lancement du serveur local ci-dessus, si Python, Playwright et Chromium sont installés :
+### 2. Mettre en place l’espace privé en ligne (Supabase)
+
+1. Créer un projet sur <https://supabase.com> (offre gratuite suffisante pour démarrer), région Europe.
+2. Dans **SQL Editor**, coller et exécuter le contenu de `supabase/migrations/0001_schema.sql`. Le script est idempotent : il peut être relancé sans dommage. Il crée les tables, les fonctions, les politiques RLS et le bucket privé `media`.
+3. Dans **Authentication → Providers → Email**, laisser l’e-mail activé. Vous pouvez désactiver « Confirm email » pour simplifier la première connexion, ou le garder.
+4. Dans **Authentication → URL Configuration**, renseigner la **Site URL** du site (par exemple `https://madec01.github.io/kine/`) et l’ajouter aux **Redirect URLs** (nécessaire pour les liens de confirmation et de réinitialisation de mot de passe).
+5. Récupérer l’**URL du projet** et la **clé anon** dans **Project Settings → API**, puis les déclarer :
+   - en local : fichier `.env` d’après `.env.example` ;
+   - sur GitHub : **Settings → Secrets and variables → Actions**, secrets `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`.
+6. Déployer (ci-dessous), ouvrir le site, **créer votre compte** (onglet « Créer un compte »). La première connexion crée automatiquement votre bibliothèque.
+7. **Rendre l’espace privé** : dans **Authentication → Sign In / Providers**, désactiver « Allow new users to sign up ». Même si une personne non invitée créait un compte, elle ne verrait qu’une bibliothèque vide : les politiques RLS n’exposent jamais vos données. Pour inviter plus tard un collègue, réactiver temporairement les inscriptions ou utiliser **Authentication → Users → Invite user**.
+
+La clé « anon » est faite pour être embarquée dans le site : elle n’ouvre aucun droit par elle-même, ce sont les politiques RLS qui décident.
+
+### 3. Déployer
+
+**GitHub Pages (recommandé, déjà utilisé par ce dépôt)** : dans **Settings → Pages**, choisir **Source : GitHub Actions**. Le workflow `.github/workflows/deploy.yml` construit et publie le site à chaque poussée sur `main` avec les secrets ci-dessus. L’adresse reste <https://madec01.github.io/kine/>.
+
+**Vercel ou Netlify** : importer le dépôt, commande `npm run build`, dossier `dist`, variables `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` (ne pas définir `VITE_BASE`). Prévoir la réécriture de toutes les routes vers `index.html`.
+
+### 4. Installer sur le téléphone
+
+Ouvrir le site, puis **Réglages → Installer Kiné** (Android, Chrome) ou **Partager → Sur l’écran d’accueil** (iPhone, Safari).
+
+## Partage avec des collègues
+
+Depuis **Réglages → Partage**, le propriétaire saisit l’adresse e-mail d’un collègue et choisit son rôle. L’accès s’active dès que la personne se connecte avec un compte portant exactement cette adresse. Les rôles peuvent être modifiés ou retirés à tout moment ; un collègue qui accède à plusieurs bibliothèques choisit la bibliothèque active dans les réglages.
+
+| Rôle | Exercices, tags, fiches | Médias | Partage |
+| --- | --- | --- | --- |
+| Propriétaire | lecture et écriture | lecture, envoi, suppression | gère les membres |
+| Collaborateur | lecture et écriture | lecture, envoi, suppression | — |
+| Lecteur | lecture, génération de PDF | lecture | — |
+
+## Sauvegarde et pérennité
+
+- **Export JSON** (Réglages) : exercices, familles, tags, associations, fiches et images (option). Format documenté dans `src/domain/exportImport.ts`, indépendant de Supabase : il suffit à repartir sur une autre solution technique.
+- **Import** : « Ajouter » réutilise les familles et tags de même nom ; « Remplacer » vide la bibliothèque avant d’importer (irréversible, confirmation demandée).
+- **Base de données** : Supabase conserve des sauvegardes quotidiennes sur les offres payantes ; sur l’offre gratuite, l’export JSON régulier est la sauvegarde. Un `pg_dump` reste possible via la CLI Supabase.
+- **Médias** : bucket privé, accessibles uniquement par URL signée pour les membres de la bibliothèque. Les vidéos jointes ne sont pas incluses dans l’export JSON ; préférer un lien (YouTube, Drive…) pour les vidéos volumineuses.
+
+## Sécurité et données personnelles
+
+Toute règle d’accès est une **politique RLS** PostgreSQL (`supabase/migrations/0001_schema.sql`, section 6) ou une politique du bucket (section 7). Des triggers empêchent d’associer un tag ou un exercice à une bibliothèque étrangère. Le mode local n’offre aucune protection : il est réservé aux essais ou à un appareil personnel.
+
+Cette bibliothèque n’est pas un dossier patient : **aucune donnée nominative de résident** ne doit y être saisie (ni dans les notes, ni dans les fiches). Les dosages et précautions relèvent de l’évaluation clinique du praticien.
+
+## Développement
 
 ```sh
-python tests/browser.py
-python tests/mobile.py
-npm run build
-python tests/pwa.py
+npm run dev         # serveur de développement
+npm test            # tests unitaires (Vitest)
+npm run typecheck   # vérification TypeScript
+npm run build       # production dans dist/ (404.html et .nojekyll ajoutés pour GitHub Pages)
+npm run test:e2e    # build puis parcours complets dans Chromium (test-results/) ; nécessite Playwright et Chromium
+npm run icons       # régénère les icônes PNG à partir du SVG
 ```
 
-Le chemin du navigateur peut être adapté avec `CHROMIUM_PATH`, et l’URL avec `KINE_TEST_URL`. Les captures et le PDF de contrôle sont produits dans `test-results/`, exclu du dépôt.
+Le test de bout en bout (Playwright : `npm i -D playwright && npx playwright install chromium` si absent) crée familles, tags, exercices avec image, vérifie la recherche combinée (ET entre familles, OU/ET dans une famille), la sélection, la génération du PDF, la duplication, le renommage et la suppression de tags, l’export et l’import, la persistance et l’affichage téléphone. La vérification du schéma SQL et des politiques RLS est décrite dans `supabase/tests/README.md`.
 
-Les [choix d’ergonomie mobile](docs/ergonomie-mobile.md) détaillent les références consultées et les vérifications.
+Variables de build : `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_BASE` (sous-dossier de publication, `/kine/` pour GitHub Pages), `VITE_DATA_MODE=local` pour forcer le mode local.
 
-Le test PWA crée son propre serveur local sous `/kine/`, vérifie le manifeste et les icônes, le démarrage et l’édition hors connexion, la conservation des données et l’activation différée des mises à jour. Les interactions avec les dialogues d’installation natifs et les signaux iOS sont simulés dans Chromium ; ils ne remplacent pas un essai sur un téléphone physique.
+## Évolutions prévues
 
-**Lors d’une modification des fichiers de l’application, incrémenter `VERSION` dans `sw.js`.** Le service worker précache uniquement les fichiers de ce site, avec un nom de cache propre au chemin de déploiement ; il ne supprime pas les caches des autres projets GitHub Pages. Une installation incomplète conserve l’ancienne version. Un hébergement HTTPS (ou localhost) est nécessaire pour l’installation et le mode hors connexion ; l’ouverture par `file://` ne les active pas.
-
-## Cadre d’usage
-
-Les exercices et les dosages fournis sont des **exemples d’organisation à individualiser**, sans validation clinique externe. Ils ne constituent pas une prescription automatique. Le choix de l’exercice, les précautions, l’aide nécessaire et le dosage relèvent de l’évaluation clinique. Les illustrations sont schématiques et accompagnent les consignes écrites. Les commentaires sont destinés aux observations sur les exercices ; le site n’est pas un dossier patient.
-
-La préparation de séances structurées (version 3) reste une évolution future. Les collections et leur export sont déjà disponibles.
+Version 2 du cahier des charges : gestion plus fine des médias (réordonnancement, recadrage), fiches réutilisables enrichies (déjà disponibles sous forme simple), consultation hors connexion des données Supabase, améliorations ergonomiques issues de l’usage réel.
