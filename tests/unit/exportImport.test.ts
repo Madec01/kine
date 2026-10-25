@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { buildExport, parseExport, summarizeExport, dataUrlToBlob, ImportFormatError } from '../../src/domain/exportImport';
 import { importExport } from '../../src/domain/importer';
-import { LocalRepository, MemoryStore } from '../../src/data/localRepository';
-import { EMPTY_EXERCISE } from '../../src/data/types';
+import { LocalRepository } from '../../src/data/localRepository';
+import { DEFAULT_SHEET_OPTIONS, EMPTY_EXERCISE } from '../../src/data/types';
+
+let n = 0;
+const open = () => LocalRepository.open(`test-export-${Date.now()}-${n++}`);
 
 async function seededRepository() {
-  const repo = new LocalRepository(new MemoryStore());
-  const [library] = await repo.listLibraries();
-  const structural = await repo.createFamily(library.id, { name: 'Objectifs structurels', description: '', color: 'terre' });
-  const functional = await repo.createFamily(library.id, { name: 'Objectifs fonctionnels', description: 'Gestes de la vie quotidienne', color: 'olive' });
+  const repo = await open();
+  const library = await repo.getLibrary();
+  const structural = await repo.createFamily({ name: 'Objectifs structurels', description: '', color: 'terre' });
+  const functional = await repo.createFamily({ name: 'Objectifs fonctionnels', description: 'Gestes de la vie quotidienne', color: 'olive' });
   const renfo = await repo.createTag(structural.id, 'Renforcement MI');
   const sitStand = await repo.createTag(functional.id, 'Assis-debout');
-  const exercise = await repo.createExercise(library.id, {
+  const exercise = await repo.createExercise({
     ...EMPTY_EXERCISE,
     name: 'Lever de chaise',
     description: 'Se lever sans les mains',
@@ -21,14 +24,14 @@ async function seededRepository() {
   });
   const png = new Blob([Uint8Array.from([137, 80, 78, 71])], { type: 'image/png' });
   await repo.uploadMedia(exercise, png, 'image', 'Position de départ');
-  await repo.saveSheet(library.id, { title: 'Séance équilibre', subtitle: '', options: { ...(await import('../../src/data/types')).DEFAULT_SHEET_OPTIONS }, exerciseIds: [exercise.id] });
+  await repo.saveSheet({ title: 'Séance équilibre', subtitle: '', options: { ...DEFAULT_SHEET_OPTIONS }, exerciseIds: [exercise.id] });
   return { repo, library };
 }
 
 describe('export / import round trip', () => {
   it('exports the whole library and re-imports it into an empty one', async () => {
     const { repo, library } = await seededRepository();
-    const snapshot = await repo.loadSnapshot(library.id);
+    const snapshot = await repo.loadSnapshot();
     const mediaData = new Map<string, string>();
     for (const exercise of snapshot.exercises) {
       for (const media of exercise.media) {
@@ -43,12 +46,11 @@ describe('export / import round trip', () => {
     const json = JSON.parse(JSON.stringify(file));
     const parsed = parseExport(json);
 
-    const target = new LocalRepository(new MemoryStore());
-    const [targetLibrary] = await target.listLibraries();
-    const report = await importExport(target, targetLibrary.id, parsed, 'merge', await target.loadSnapshot(targetLibrary.id));
+    const target = await open();
+    const report = await importExport(target, parsed, 'merge', await target.loadSnapshot());
     expect(report).toMatchObject({ families: 2, tags: 2, exercises: 1, media: 1, sheets: 1, skippedMedia: 0 });
 
-    const imported = await target.loadSnapshot(targetLibrary.id);
+    const imported = await target.loadSnapshot();
     expect(imported.exercises[0].name).toBe('Lever de chaise');
     expect(imported.exercises[0].tagIds).toHaveLength(2);
     expect(imported.exercises[0].media[0].caption).toBe('Position de départ');
@@ -59,24 +61,24 @@ describe('export / import round trip', () => {
 
   it('merges tags by name instead of duplicating them', async () => {
     const { repo, library } = await seededRepository();
-    const snapshot = await repo.loadSnapshot(library.id);
+    const snapshot = await repo.loadSnapshot();
     const file = parseExport(JSON.parse(JSON.stringify(buildExport(library, snapshot, new Map()))));
-    const report = await importExport(repo, library.id, file, 'merge', snapshot);
+    const report = await importExport(repo, file, 'merge', snapshot);
     expect(report.families).toBe(0);
     expect(report.tags).toBe(0);
     expect(report.exercises).toBe(1);
     expect(report.skippedMedia).toBe(1);
-    const after = await repo.loadSnapshot(library.id);
+    const after = await repo.loadSnapshot();
     expect(after.tags).toHaveLength(2);
     expect(after.exercises).toHaveLength(2);
   });
 
   it('replace mode empties the library first', async () => {
     const { repo, library } = await seededRepository();
-    const snapshot = await repo.loadSnapshot(library.id);
+    const snapshot = await repo.loadSnapshot();
     const file = parseExport(JSON.parse(JSON.stringify(buildExport(library, snapshot, new Map()))));
-    await importExport(repo, library.id, file, 'replace', snapshot);
-    const after = await repo.loadSnapshot(library.id);
+    await importExport(repo, file, 'replace', snapshot);
+    const after = await repo.loadSnapshot();
     expect(after.exercises).toHaveLength(1);
     expect(after.families).toHaveLength(2);
     expect(after.exercises[0].media).toHaveLength(0);

@@ -1,12 +1,8 @@
-// Domain types shared by the UI, the data adapters and the PDF generator.
-
-export type Role = 'owner' | 'editor' | 'reader';
+// Domain types shared by the UI, the local store, the sync engine and the PDF generator.
 
 export interface Library {
   id: string;
   name: string;
-  ownerId: string;
-  role: Role;
   createdAt: string;
 }
 
@@ -16,7 +12,6 @@ export type FamilyColor = (typeof FAMILY_COLORS)[number];
 
 export interface TagFamily {
   id: string;
-  libraryId: string;
   name: string;
   description: string;
   color: FamilyColor;
@@ -26,7 +21,6 @@ export interface TagFamily {
 
 export interface Tag {
   id: string;
-  libraryId: string;
   familyId: string;
   name: string;
   position: number;
@@ -37,13 +31,16 @@ export type MediaKind = 'image' | 'video';
 
 export interface Media {
   id: string;
-  libraryId: string;
   exerciseId: string;
   kind: MediaKind;
-  storagePath: string;
   mimeType: string;
   caption: string;
   position: number;
+  bytes: number;
+  /** The file itself is present on this device (otherwise it can be fetched online). */
+  available: boolean;
+  /** The file exists (or is scheduled) in the online backup; videos never are. */
+  synced: boolean;
   createdAt: string;
 }
 
@@ -56,7 +53,6 @@ export interface Dosage {
 
 export interface Exercise {
   id: string;
-  libraryId: string;
   name: string;
   description: string;
   instructions: string;
@@ -72,11 +68,13 @@ export interface Exercise {
   videoUrl: string;
   tagIds: string[];
   media: Media[];
+  /** Small JPEG data URL of the first image, for lists (no download needed). */
+  thumb: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type ExerciseInput = Omit<Exercise, 'id' | 'libraryId' | 'media' | 'createdAt' | 'updatedAt'>;
+export type ExerciseInput = Omit<Exercise, 'id' | 'media' | 'thumb' | 'createdAt' | 'updatedAt'>;
 
 export const EMPTY_EXERCISE: ExerciseInput = {
   name: '',
@@ -124,7 +122,6 @@ export const DEFAULT_SHEET_OPTIONS: SheetOptions = {
 
 export interface Sheet {
   id: string;
-  libraryId: string;
   title: string;
   subtitle: string;
   options: SheetOptions;
@@ -138,23 +135,4 @@ export interface SheetInput {
   subtitle: string;
   options: SheetOptions;
   exerciseIds: string[];
-}
-
-export interface Member {
-  userId: string;
-  email: string;
-  role: Role;
-  isOwner: boolean;
-}
-
-export interface Invitation {
-  id: string;
-  email: string;
-  role: Role;
-  createdAt: string;
-}
-
-export interface SessionUser {
-  id: string;
-  email: string;
 }

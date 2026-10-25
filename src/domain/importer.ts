@@ -21,7 +21,6 @@ export interface ImportReport {
  */
 export async function importExport(
   repo: Repository,
-  libraryId: string,
   file: ExportFile,
   mode: ImportMode,
   existing: LibrarySnapshot,
@@ -33,7 +32,7 @@ export async function importExport(
   let tags: Tag[] = existing.tags;
   if (mode === 'replace') {
     onProgress?.('Suppression du contenu actuel…');
-    await repo.clearLibrary(libraryId);
+    await repo.clearLibrary();
     families = [];
     tags = [];
   }
@@ -45,7 +44,7 @@ export async function importExport(
     let target = families.find((f) => sameName(f.name, family.name));
     if (!target) {
       onProgress?.(`Famille « ${family.name} »…`);
-      target = await repo.createFamily(libraryId, { name: family.name, description: family.description, color: family.color });
+      target = await repo.createFamily({ name: family.name, description: family.description, color: family.color });
       families = [...families, target];
       report.families += 1;
     }
@@ -79,7 +78,7 @@ export async function importExport(
       videoUrl: item.videoUrl,
       tagIds: item.tags.map((id) => tagIdMap.get(id)).filter((id): id is string => Boolean(id)),
     };
-    let created: Exercise = await repo.createExercise(libraryId, input);
+    let created: Exercise = await repo.createExercise(input);
     exerciseIdMap.set(item.id, created.id);
     report.exercises += 1;
 
@@ -103,7 +102,7 @@ export async function importExport(
   for (const sheet of file.sheets) {
     const exerciseIds = sheet.exerciseIds.map((id) => exerciseIdMap.get(id)).filter((id): id is string => Boolean(id));
     if (exerciseIds.length === 0) continue;
-    await repo.saveSheet(libraryId, { title: sheet.title, subtitle: sheet.subtitle, options: sheet.options, exerciseIds });
+    await repo.saveSheet({ title: sheet.title, subtitle: sheet.subtitle, options: sheet.options, exerciseIds });
     report.sheets += 1;
   }
 

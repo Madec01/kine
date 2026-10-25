@@ -446,3 +446,4 @@ img, video { display: block; max-width: 100%; }
 /* --- Responsive visibility helpers ------------------------------------- */
 @media (max-width: 959px) { .hide-mobile { display: none !important; } }
 @media (min-width: 960px) { .hide-desktop { display: none !important; } }
+.badge--danger { background: var(--danger-soft); color: var(--danger); }

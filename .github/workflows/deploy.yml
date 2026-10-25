@@ -1,7 +1,8 @@
 # Construit le site et le publie sur GitHub Pages à chaque poussée sur main.
 # Prérequis : Settings → Pages → Source = « GitHub Actions », puis déclarer
-# les secrets VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY (Settings → Secrets
-# and variables → Actions). Sans eux, le site publié fonctionne en mode local.
+# les secrets VITE_FIREBASE_API_KEY et VITE_FIREBASE_PROJECT_ID (Settings →
+# Secrets and variables → Actions). Sans eux, le site publié fonctionne sans
+# sauvegarde en ligne (données sur l'appareil uniquement).
 name: Déployer sur GitHub Pages
 
 on:
@@ -32,8 +33,9 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
       - uses: actions/configure-pages@v5
         with:
           # Bascule Pages en mode « GitHub Actions » si le dépôt est encore en mode branche.

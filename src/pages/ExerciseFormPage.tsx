@@ -217,7 +217,7 @@ export function ExerciseFormPage() {
               <MediaThumb media={m} alt={m.caption} />
               <button type="button" className="btn btn--icon btn--sm media-tile__remove" onClick={() => setMediaToDelete(m)} aria-label="Supprimer ce média"><IconTrash /></button>
               <button type="button" className="media-tile__caption" style={{ border: 0, textAlign: 'left', cursor: 'pointer' }} onClick={() => { setCaptionTarget(m); setCaption(m.caption); }}>
-                {m.caption || 'Ajouter une légende'}
+                {m.caption || 'Ajouter une légende'}{!m.synced && ' · appareil seulement'}
               </button>
             </div>
           ))}
@@ -239,7 +239,7 @@ export function ExerciseFormPage() {
         </div>
         <input ref={imageInput} type="file" accept={ACCEPTED_IMAGES} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
         <input ref={videoInput} type="file" accept={ACCEPTED_VIDEOS} hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
-        <p className="field__hint">Les images sont redimensionnées (1600 px max) avant l’envoi. Une vidéo peut être jointe (50 Mo max) ou indiquée par un lien ci-dessous.</p>
+        <p className="field__hint">Les images sont redimensionnées (1600 px max) et sauvegardées en ligne. Une vidéo jointe (50 Mo max) reste sur cet appareil : pour la retrouver ailleurs et dans le PDF, indiquez plutôt un lien ci-dessous.</p>
         <Field label="Lien vidéo (YouTube, Vimeo, Drive…)" htmlFor="video" hint="Le lien figurera dans le PDF avec un QR code.">
           <input id="video" className="input" type="url" inputMode="url" value={form.videoUrl} onChange={(e) => set('videoUrl', e.target.value)} placeholder="https://" />
         </Field>
@@ -299,6 +299,6 @@ export function ExerciseFormPage() {
 }
 
 function toInput(exercise: Exercise): ExerciseInput {
-  const { id: _id, libraryId: _l, media: _m, createdAt: _c, updatedAt: _u, ...rest } = exercise;
+  const { id: _id, media: _m, thumb: _t, createdAt: _c, updatedAt: _u, ...rest } = exercise;
   return { ...rest, dosage: { ...rest.dosage }, tagIds: [...rest.tagIds] };
 }

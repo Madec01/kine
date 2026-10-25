@@ -5,7 +5,7 @@ import { useSelection } from '../state/SelectionProvider';
 import { EMPTY_FILTERS, hasActiveFilters, searchExercises, sortFamilies, type FamilyMode, type SearchFilters, type SortKey } from '../domain/search';
 import { FilterPanel } from '../components/FilterPanel';
 import { TagChip } from '../components/TagChip';
-import { MediaThumb } from '../components/MediaThumb';
+import { ExerciseThumb, hasThumb } from '../components/MediaThumb';
 import { Dialog, Difficulty, EmptyState } from '../components/ui';
 import { IconCheck, IconClose, IconExercises, IconFilter, IconGrid, IconList, IconPlus, IconSearch } from '../components/icons';
 import { excerpt, plural } from '../lib/format';
@@ -200,13 +200,12 @@ export function ExercisesPage() {
             <div className="cards">
               {results.map((exercise, i) => {
                 const selected = selection.has(exercise.id);
-                const image = exercise.media.find((m) => m.kind === 'image');
                 const chips = orderedTags(exercise);
                 return (
                   <article key={exercise.id} className={`card card--link reveal ${selected ? 'card--selected' : ''}`} style={{ '--i': Math.min(i, 12) } as React.CSSProperties}>
-                    {image && (
+                    {hasThumb(exercise) && (
                       <div className="card__thumb">
-                        <MediaThumb media={image} alt="" />
+                        <ExerciseThumb exercise={exercise} />
                       </div>
                     )}
                     <h2 className="card__title">
@@ -240,7 +239,7 @@ export function ExercisesPage() {
                 return (
                   <div key={exercise.id} className={`row reveal ${selected ? 'row--selected' : ''}`} style={{ '--i': Math.min(i, 12) } as React.CSSProperties}>
                     <div className="row__thumb">
-                      <MediaThumb media={exercise.media.find((m) => m.kind === 'image')} />
+                      <ExerciseThumb exercise={exercise} />
                     </div>
                     <div className="row__body">
                       <Link to={`/exercices/${exercise.id}`} className="row__title">{exercise.name}</Link>

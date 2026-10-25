@@ -3,7 +3,7 @@ import { countExercisesByTag, duplicateName, normalize, searchExercises, type Se
 import { EMPTY_FILTERS } from '../../src/domain/search';
 import type { Exercise, Tag } from '../../src/data/types';
 
-const tag = (id: string, familyId: string): Tag => ({ id, libraryId: 'L', familyId, name: id, position: 0, createdAt: '' });
+const tag = (id: string, familyId: string): Tag => ({ id, familyId, name: id, position: 0, createdAt: '' });
 const tags: Tag[] = [
   tag('renfo-mi', 'structurel'),
   tag('equilibre', 'structurel'),
@@ -15,7 +15,6 @@ const tags: Tag[] = [
 
 const exercise = (id: string, name: string, tagIds: string[], extra: Partial<Exercise> = {}): Exercise => ({
   id,
-  libraryId: 'L',
   name,
   description: '',
   instructions: '',
@@ -30,6 +29,7 @@ const exercise = (id: string, name: string, tagIds: string[], extra: Partial<Exe
   videoUrl: '',
   tagIds,
   media: [],
+  thumb: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   ...extra,

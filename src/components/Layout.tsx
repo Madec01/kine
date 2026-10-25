@@ -1,8 +1,8 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { useAuth } from '../state/AuthProvider';
 import { useLibrary } from '../state/LibraryProvider';
 import { useSelection } from '../state/SelectionProvider';
 import { IconExercises, IconSettings, IconSheet, IconTags } from './icons';
+import { SyncBadge } from './SyncBadge';
 
 const links = [
   { to: '/exercices', label: 'Exercices', Icon: IconExercises },
@@ -26,10 +26,8 @@ function Nav({ badge }: { badge: number }) {
 }
 
 export function Layout() {
-  const { repo, user } = useAuth();
-  const { library, role } = useLibrary();
+  const { library } = useLibrary();
   const { count } = useSelection();
-  const roleLabel = role === 'owner' ? 'Propriétaire' : role === 'editor' ? 'Collaborateur' : 'Lecteur';
 
   return (
     <div className="app">
@@ -42,17 +40,8 @@ export function Layout() {
           <Nav badge={count} />
         </nav>
         <div className="sidebar__foot">
-          <span>
-            <span className={`badge ${repo.mode === 'supabase' ? 'badge--ok' : 'badge--warn'}`}>
-              {repo.mode === 'supabase' ? 'En ligne · sécurisé' : 'Mode local'}
-            </span>
-          </span>
-          {library && (
-            <span>
-              {library.name} · {roleLabel}
-            </span>
-          )}
-          {user && <span style={{ overflowWrap: 'anywhere' }}>{user.email}</span>}
+          <SyncBadge />
+          {library && <span>{library.name}</span>}
         </div>
       </aside>
 
@@ -61,9 +50,7 @@ export function Layout() {
           <span className="brand__mark">Kiné</span>
           <span className="brand__sub">Exercices</span>
         </Link>
-        <span className={`badge ${repo.mode === 'supabase' ? 'badge--ok' : 'badge--warn'}`}>
-          {repo.mode === 'supabase' ? 'En ligne' : 'Local'}
-        </span>
+        <SyncBadge compact />
       </header>
 
       <main className="app__main">

@@ -77,7 +77,7 @@ try {
   await page.goto(`${BASE}/`);
   await page.waitForURL(/\/exercices$/);
   await page.getByText('Votre bibliothèque est vide').waitFor();
-  assert(await page.getByText('Mode local').first().isVisible(), 'le mode local est indiqué');
+  assert(await page.getByText('Local seulement').first().isVisible(), 'l’absence de sauvegarde en ligne est indiquée');
   await page.screenshot({ path: resolve(OUT, '01-vide.png') });
 
   console.log('2. Familles et tags');

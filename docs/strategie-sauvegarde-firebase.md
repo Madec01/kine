@@ -259,7 +259,33 @@ Soit moins de 1 % du quota gratuit quotidien dans tous les cas courants.
 5. **Nettoyage** : le code Supabase (adaptateur, SQL, section du README) devient inutile ; à
    retirer pour garder une seule voie, sauf avis contraire.
 
-## 13. Décisions à prendre
+## 13. Décisions prises (25 octobre 2026)
+
+1. Offre gratuite : images compressées dans Firestore, vidéos par lien ou fichier local non synchronisé.
+2. Pas de connexion : une **clé de bibliothèque** aléatoire remplace l’identifiant (voir § 9 bis). Les règles
+   Firestore refusent les identifiants courts et interdisent de lister les bibliothèques.
+3. Code Supabase supprimé.
+4. Délais : 60 s après la dernière modification, 5 min au plus en saisie continue, 15 min entre vérifications.
+
+### 9 bis. Accès par clé de bibliothèque
+
+```
+match /libraries/{libraryId} {
+  allow get, create, update: if libraryId.size() >= 20;
+  allow list, delete: if false;
+  match /{collection}/{docId} {
+    allow read, write: if libraryId.size() >= 20
+      && collection in ['families', 'exercises', 'sheets', 'media'];
+  }
+}
+```
+
+La clé (24 caractères parmi 31, soit environ 10^35 possibilités) est générée sur le premier appareil,
+affichée dans Réglages et recopiée sur les autres. Changer de clé fusionne le contenu local dans la
+bibliothèque rejointe. Le passage à des comptes et des rôles se fera en ajoutant un champ `members`
+et en remplaçant la condition de taille par une vérification d’identité.
+
+## 13 ter. Questions initialement posées
 
 1. **Plan Firebase** : rester sur l’offre gratuite (images dans Firestore, vidéos par lien ou
    locales) ou passer en Blaze pour utiliser Storage ? Proposition : gratuit d’abord, la
