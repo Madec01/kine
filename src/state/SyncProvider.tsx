@@ -3,7 +3,7 @@ import { useRepo } from './RepositoryProvider';
 import { useLibrary } from './LibraryProvider';
 import type { SyncEngine } from '../sync/engine';
 import type { SyncStatus } from '../sync/types';
-import { generateLibraryKey } from '../sync/libraryKey';
+import { deriveLibraryKey, isValidLibraryKey, normalizeLibraryKey, resolveLibraryKey } from '../sync/libraryKey';
 
 const DISABLED: SyncStatus = {
   state: 'disabled',
@@ -24,7 +24,6 @@ interface SyncContextValue {
   saveNow: () => Promise<void>;
   checkNow: () => Promise<number>;
   downloadAllMedia: (onProgress?: (done: number, total: number) => void) => Promise<number>;
-  useLibraryKey: (key: string) => Promise<void>;
 }
 
 const SyncContext = createContext<SyncContextValue | null>(null);
@@ -52,12 +51,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       setEnabled(true);
       const [{ FirestoreRemote }, { SyncEngine }] = await Promise.all([import('../sync/firestore'), import('../sync/engine')]);
       if (cancelled) return;
-      let libraryId = await repo.getMeta<string>('libraryId');
-      if (!libraryId) {
-        libraryId = generateLibraryKey();
-        await repo.setMeta('libraryId', libraryId);
-      }
-      const engine = new SyncEngine(repo, new FirestoreRemote(env), libraryId);
+      // Every device opening this site shares one library: no key to copy.
+      const override = env.libraryKey ? normalizeLibraryKey(env.libraryKey) : '';
+      const configured = override && isValidLibraryKey(override) ? override : await deriveLibraryKey(env.projectId, env.apiKey);
+      const stored = await repo.getMeta<string>('libraryId');
+      const { key, mustAdopt } = resolveLibraryKey(stored, configured);
+      if (!stored) await repo.setMeta('libraryId', key);
+      const engine = new SyncEngine(repo, new FirestoreRemote(env), stored ?? key);
       engineRef.current = engine;
       const unsubscribe = engine.subscribe(setStatus);
       const unsubscribeRemote = engine.onRemoteApplied(() => void reloadRef.current());
@@ -67,7 +67,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         engine.stop();
         engineRef.current = null;
       };
-      await engine.start();
+      if (mustAdopt) {
+        // This device used another identifier (older version): merge its content into the shared library.
+        await engine.start();
+        await engine.adoptLibrary(key);
+        await reloadRef.current();
+      } else {
+        await engine.start();
+      }
       if (!cancelled) setReady(true);
     })().catch((error: unknown) => {
       setStatus({ ...DISABLED, state: 'error', lastError: error instanceof Error ? error.message : String(error) });
@@ -95,16 +102,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const downloadAllMedia = useCallback((onProgress?: (done: number, total: number) => void) => engineRef.current?.downloadAllMedia(onProgress) ?? Promise.resolve(0), []);
 
-  const useLibraryKey = useCallback(async (key: string) => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    await engine.adoptLibrary(key);
-    await reloadRef.current();
-  }, []);
-
   const value = useMemo<SyncContextValue>(
-    () => ({ enabled, ready, status, saveNow, checkNow, downloadAllMedia, useLibraryKey }),
-    [enabled, ready, status, saveNow, checkNow, downloadAllMedia, useLibraryKey],
+    () => ({ enabled, ready, status, saveNow, checkNow, downloadAllMedia }),
+    [enabled, ready, status, saveNow, checkNow, downloadAllMedia],
   );
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;
 }

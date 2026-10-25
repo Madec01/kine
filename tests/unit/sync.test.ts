@@ -220,3 +220,19 @@ describe('merge rules', () => {
     ]);
   });
 });
+
+describe('library key', () => {
+  it('derives the same identifier for the same Firebase project on every device', async () => {
+    const { deriveLibraryKey, isValidLibraryKey, resolveLibraryKey } = await import('../../src/sync/libraryKey');
+    const a = await deriveLibraryKey('kine-3f2a1', 'AIzaExample');
+    const b = await deriveLibraryKey('kine-3f2a1', 'AIzaExample');
+    const other = await deriveLibraryKey('autre-projet', 'AIzaExample');
+    expect(a).toBe(b);
+    expect(a).not.toBe(other);
+    expect(a).toHaveLength(24);
+    expect(isValidLibraryKey(a)).toBe(true);
+    expect(resolveLibraryKey(undefined, a)).toEqual({ key: a, mustAdopt: false });
+    expect(resolveLibraryKey(a, a)).toEqual({ key: a, mustAdopt: false });
+    expect(resolveLibraryKey('ancienne-cle-aleatoire-x', a)).toEqual({ key: a, mustAdopt: true });
+  });
+});

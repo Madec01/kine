@@ -23,6 +23,8 @@ export interface FirebaseEnv {
   projectId: string;
   appId?: string;
   authDomain?: string;
+  /** Optional fixed library identifier (VITE_LIBRARY_KEY); derived from the project otherwise. */
+  libraryKey?: string;
 }
 
 export function readFirebaseEnv(): FirebaseEnv | null {
@@ -34,6 +36,7 @@ export function readFirebaseEnv(): FirebaseEnv | null {
     projectId,
     appId: (import.meta.env.VITE_FIREBASE_APP_ID as string | undefined) || undefined,
     authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined) || undefined,
+    libraryKey: (import.meta.env.VITE_LIBRARY_KEY as string | undefined) || undefined,
   };
 }
 

@@ -262,8 +262,8 @@ Soit moins de 1 % du quota gratuit quotidien dans tous les cas courants.
 ## 13. Décisions prises (25 octobre 2026)
 
 1. Offre gratuite : images compressées dans Firestore, vidéos par lien ou fichier local non synchronisé.
-2. Pas de connexion : une **clé de bibliothèque** aléatoire remplace l’identifiant (voir § 9 bis). Les règles
-   Firestore refusent les identifiants courts et interdisent de lister les bibliothèques.
+2. Pas de connexion, rien à saisir : identifiant de bibliothèque **dérivé de la configuration Firebase du site**
+   (voir § 9 bis). Les règles Firestore refusent les identifiants courts et interdisent de lister les bibliothèques.
 3. Code Supabase supprimé.
 4. Délais : 60 s après la dernière modification, 5 min au plus en saisie continue, 15 min entre vérifications.
 
@@ -280,10 +280,15 @@ match /libraries/{libraryId} {
 }
 ```
 
-La clé (24 caractères parmi 31, soit environ 10^35 possibilités) est générée sur le premier appareil,
-affichée dans Réglages et recopiée sur les autres. Changer de clé fusionne le contenu local dans la
-bibliothèque rejointe. Le passage à des comptes et des rôles se fera en ajoutant un champ `members`
-et en remplaçant la condition de taille par une vérification d’identité.
+L’identifiant (24 caractères parmi 31) est **dérivé de la configuration Firebase intégrée au site**
+(empreinte SHA-256 de `projectId` et `apiKey`) : tous les appareils qui ouvrent le site partagent
+automatiquement la même bibliothèque, sans rien saisir. Une variable de build `VITE_LIBRARY_KEY`
+permet d’imposer un autre identifiant. Un appareil qui utilisait un identifiant différent (version
+antérieure) fusionne son contenu dans la bibliothèque partagée à son premier démarrage.
+
+Conséquence assumée : le site étant public, toute personne qui ouvre son adresse accède à la
+bibliothèque. Le passage à des comptes (connexion Google) et des rôles se fera en ajoutant un champ
+`members` et en remplaçant la condition de taille par une vérification d’identité.
 
 ## 13 ter. Questions initialement posées
 

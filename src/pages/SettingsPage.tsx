@@ -1,17 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRepo } from '../state/RepositoryProvider';
 import { useLibrary } from '../state/LibraryProvider';
 import { useSync } from '../state/SyncProvider';
 import { errorMessage, useToast } from '../state/ToastProvider';
-import { ConfirmDialog, Dialog, Field } from '../components/ui';
-import { IconCopy, IconDownload, IconUpload } from '../components/icons';
+import { Dialog, Field } from '../components/ui';
+import { IconDownload, IconUpload } from '../components/icons';
 import { buildExport, parseExport, summarizeExport, type ExportFile, type ExportSummary } from '../domain/exportImport';
 import { importExport, type ImportMode, type ImportReport } from '../domain/importer';
 import { blobToDataUrl, prepareImage } from '../lib/images';
 import { downloadJson, safeFilename } from '../lib/download';
 import { canPromptInstall, isIos, isStandalone, onInstallChange, promptInstall } from '../lib/install';
 import { formatDate, plural } from '../lib/format';
-import { formatLibraryKey, isValidLibraryKey, normalizeLibraryKey } from '../sync/libraryKey';
 
 export function SettingsPage() {
   const lib = useLibrary();
@@ -51,12 +50,9 @@ function formatTime(ms: number | null): string {
 }
 
 function OnlineBackupSection() {
-  const { enabled, ready, status, saveNow, checkNow, downloadAllMedia, useLibraryKey } = useSync();
+  const { enabled, ready, status, saveNow, checkNow, downloadAllMedia } = useSync();
   const { notify } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
-  const [keyDialog, setKeyDialog] = useState(false);
-  const [keyInput, setKeyInput] = useState('');
-  const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
   if (!enabled) {
     return (
@@ -83,27 +79,6 @@ function OnlineBackupSection() {
     }
   };
 
-  const copyKey = async () => {
-    if (!status.libraryId) return;
-    try {
-      await navigator.clipboard.writeText(status.libraryId);
-      notify('Clé copiée.', 'ok');
-    } catch {
-      notify('Copie impossible : sélectionnez la clé et copiez-la manuellement.', 'danger');
-    }
-  };
-
-  const submitKey = (event: FormEvent) => {
-    event.preventDefault();
-    const key = normalizeLibraryKey(keyInput);
-    if (!isValidLibraryKey(key)) {
-      notify('Clé invalide : 20 caractères au minimum, lettres et chiffres.', 'danger');
-      return;
-    }
-    setKeyDialog(false);
-    setConfirmKey(key);
-  };
-
   const stateLabel: Record<typeof status.state, string> = {
     disabled: 'désactivée',
     idle: 'à jour',
@@ -128,7 +103,7 @@ function OnlineBackupSection() {
             {status.missingMedia > 0 && <><dt>Images</dt><dd>{plural(status.missingMedia, 'image')} en ligne non encore téléchargée{status.missingMedia > 1 ? 's' : ''} sur cet appareil</dd></>}
           </dl>
           {status.lastError && <div className="notice notice--danger">{status.lastError}</div>}
-          <p className="small muted">Les modifications sont envoyées automatiquement une minute après le dernier changement, à la fermeture de l’application et sur demande. Seuls les éléments modifiés sont transmis.</p>
+          <p className="small muted">Tous les appareils qui ouvrent ce site partagent automatiquement la même bibliothèque : rien à saisir. Les modifications sont envoyées une minute après le dernier changement, à la fermeture de l’application et sur demande ; seuls les éléments modifiés sont transmis.</p>
           <div className="btn-row">
             <button type="button" className="btn btn--primary" disabled={Boolean(busy) || status.state === 'syncing'} onClick={() => void run('save', saveNow, 'Sauvegarde terminée.')}>Sauvegarder maintenant</button>
             <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void run('check', async () => { const n = await checkNow(); notify(n > 0 ? `${plural(n, 'élément')} mis à jour depuis la sauvegarde en ligne.` : 'Aucune modification en ligne.', 'ok'); })}>Vérifier les modifications en ligne</button>
@@ -138,34 +113,8 @@ function OnlineBackupSection() {
               </button>
             )}
           </div>
-
-          <div className="field">
-            <span className="field__label">Clé de la bibliothèque</span>
-            <div className="btn-row">
-              <code className="input" style={{ width: 'auto', minHeight: 40, display: 'inline-flex', alignItems: 'center', fontFamily: 'ui-monospace, monospace', letterSpacing: '0.04em', userSelect: 'all' }}>{status.libraryId ? formatLibraryKey(status.libraryId) : '…'}</code>
-              <button type="button" className="btn btn--sm" onClick={() => void copyKey()}><IconCopy /> Copier</button>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setKeyInput(''); setKeyDialog(true); }}>Utiliser une autre clé</button>
-            </div>
-            <span className="field__hint">Cette clé tient lieu d’identifiant : saisissez-la sur un autre appareil pour retrouver la même bibliothèque. Ne la partagez qu’avec des personnes de confiance ; toute personne qui la connaît peut lire et modifier les données.</span>
-          </div>
         </>
       )}
-
-      <Dialog open={keyDialog} onClose={() => setKeyDialog(false)} title="Utiliser une autre clé">
-        <form className="form-grid" onSubmit={submitKey}>
-          <Field label="Clé de la bibliothèque à rejoindre" htmlFor="library-key" hint="Recopiez la clé affichée dans les réglages de l’autre appareil (les tirets sont facultatifs)."><input id="library-key" className="input" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} autoFocus autoComplete="off" spellCheck={false} /></Field>
-          <div className="dialog__foot"><button type="button" className="btn btn--ghost" onClick={() => setKeyDialog(false)}>Annuler</button><button type="submit" className="btn btn--primary">Continuer</button></div>
-        </form>
-      </Dialog>
-      <ConfirmDialog
-        open={Boolean(confirmKey)}
-        title="Changer de bibliothèque en ligne ?"
-        message={<>Cet appareil utilisera la clé <code>{confirmKey ? formatLibraryKey(confirmKey) : ''}</code>. Son contenu actuel sera ajouté à cette bibliothèque (fusion), puis les données en ligne seront téléchargées.</>}
-        confirmLabel="Changer de clé"
-        busy={busy === 'key'}
-        onConfirm={() => { const key = confirmKey; if (key) void run('key', () => useLibraryKey(key), 'Bibliothèque rejointe.').then(() => setConfirmKey(null)); }}
-        onClose={() => setConfirmKey(null)}
-      />
     </section>
   );
 }
