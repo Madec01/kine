@@ -36,6 +36,7 @@ jobs:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_LIBRARY_KEY: ${{ secrets.VITE_LIBRARY_KEY }}
       - uses: actions/configure-pages@v5
         with:
           # Bascule Pages en mode « GitHub Actions » si le dépôt est encore en mode branche.

@@ -12,7 +12,7 @@ La bibliothèque est **entièrement vide au départ** : exercices, familles de t
 - **Fiches PDF** : sélection temporaire d’exercices, réordonnancement, titre et sous-titre, choix des rubriques (description, consignes, dosage, images, tags, précautions, variantes, vidéo, notes), génération d’un **PDF A4** téléchargeable avec images et **QR code vers la vidéo**. Les sélections peuvent être **enregistrées et rechargées**.
 - **Hors connexion d’abord** : toutes les données vivent dans le navigateur (IndexedDB) ; l’application fonctionne sans réseau, y compris la génération de PDF avec les images présentes sur l’appareil.
 - **Sauvegarde en ligne économe** (Firebase Firestore, offre gratuite) : seuls les éléments modifiés sont envoyés, par lots, une minute après le dernier changement, à la fermeture ou sur le bouton « Sauvegarder ». Au démarrage, une seule lecture suffit à savoir s’il y a du nouveau ; un autre appareil ne télécharge que ce qui a changé. Les images sont compressées et téléchargées à la demande.
-- **Plusieurs appareils sans compte** : une clé de bibliothèque (identifiant long et aléatoire) tient lieu d’accès ; on la recopie une fois sur chaque appareil.
+- **Plusieurs appareils sans compte ni saisie** : tous les appareils qui ouvrent le site partagent automatiquement la même bibliothèque, identifiée à partir de la configuration Firebase intégrée au site.
 - **Export JSON** complet (familles, tags, associations, exercices, images intégrées, fiches) et import (ajout ou remplacement) : sauvegarde de secours et porte de sortie vers une autre solution.
 - **Application installable** (PWA) sur l’écran d’accueil.
 
@@ -59,14 +59,14 @@ Ouvrir <http://localhost:5173>. Sans configuration Firebase, l’indicateur affi
 
 1. Créer un projet sur <https://console.firebase.google.com> (offre Spark, sans carte bancaire). Refuser Google Analytics, inutile ici.
 2. **Build → Firestore Database → Créer une base de données**, emplacement en Europe (`eur3` ou `europe-west`), démarrer en **mode production**.
-3. Onglet **Règles** : remplacer le contenu par celui du fichier `firestore.rules` du dépôt, puis **Publier**. Ces règles interdisent de lister les bibliothèques et exigent une clé longue : sans la clé, personne ne lit ni n’écrit.
+3. Onglet **Règles** : remplacer le contenu par celui du fichier `firestore.rules` du dépôt, puis **Publier**. Ces règles interdisent de lister les bibliothèques et n’acceptent que des identifiants longs.
 4. **Paramètres du projet → Vos applications → Ajouter une application Web** (icône `</>`), sans hébergement Firebase. Relever `apiKey` et `projectId` (et `appId`).
 5. Déclarer ces valeurs :
    - en local : fichier `.env` d’après `.env.example` ;
    - sur GitHub : **Settings → Secrets and variables → Actions**, secrets `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID` (et `VITE_FIREBASE_APP_ID`).
-6. Déployer (ci-dessous). À la première ouverture, l’application génère une **clé de bibliothèque** visible dans **Réglages → Sauvegarde en ligne** et envoie les données existantes.
+6. Déployer (ci-dessous). À la première ouverture, l’application envoie les données déjà présentes sur l’appareil ; l’indicateur du menu passe à « Sauvegardé en ligne ».
 
-La configuration web Firebase (`apiKey`…) est faite pour être embarquée dans le site : ce sont les règles Firestore et la clé de bibliothèque qui protègent les données. Il n’y a pas de compte utilisateur dans cette version ; le partage par rôles pourra être ajouté plus tard sans migration.
+**Attention, version sans compte** : le site est public et sa configuration Firebase est intégrée au code, donc **toute personne qui ouvre l’adresse du site peut lire et modifier la bibliothèque**. C’est le choix fait pour démarrer simplement ; quand vous voudrez fermer l’accès, l’étape suivante est une connexion Google (un appui par appareil) sans changer la structure des données.
 
 ### 3. Déployer
 
@@ -80,9 +80,9 @@ Ouvrir le site, puis **Réglages → Installer Kiné** (Android, Chrome) ou **Pa
 
 ## Utiliser plusieurs appareils
 
-Sur le premier appareil, **Réglages → Sauvegarde en ligne → Copier** la clé de bibliothèque. Sur l’autre appareil, **Utiliser une autre clé**, coller la clé, confirmer : les textes sont téléchargés (quelques centaines de lectures au plus, une seule fois), les listes s’affichent avec leurs vignettes, et chaque image complète est téléchargée à la première ouverture de sa fiche. Le bouton **Télécharger les images** prépare un usage hors connexion complet.
+Ouvrir le site sur l’autre appareil : c’est tout. Les textes sont téléchargés (quelques centaines de lectures au plus, une seule fois), les listes s’affichent avec leurs vignettes, et chaque image complète est téléchargée à la première ouverture de sa fiche. Le bouton **Télécharger les images** (Réglages) prépare un usage hors connexion complet. Les modifications faites sur un appareil apparaissent sur l’autre à son prochain démarrage, à son retour au premier plan après quinze minutes, ou avec **Vérifier les modifications en ligne**.
 
-Toute personne qui connaît la clé peut lire et modifier la bibliothèque : ne la communiquez qu’à des collègues de confiance. Il est possible de changer de clé à tout moment ; le contenu local est alors fusionné dans la nouvelle bibliothèque.
+Pour des besoins particuliers (bibliothèque de test, réinitialisation), la variable de build `VITE_LIBRARY_KEY` impose un autre identifiant de bibliothèque.
 
 ## Comment la sauvegarde économise le quota
 

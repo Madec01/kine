@@ -44,8 +44,9 @@ service cloud.firestore {
 }
 ```
 
-3. **Publier**. Ces règles font que personne ne peut lister les bibliothèques ni en atteindre une
-   sans connaître sa clé de 24 caractères.
+3. **Publier**. Ces règles font que personne ne peut lister les bibliothèques ni utiliser un
+   identifiant court. **Attention** : le site étant public, toute personne qui ouvre son adresse
+   accède à la bibliothèque. C’est le compromis choisi pour l’instant (pas de connexion).
 
 ## D. Récupérer la configuration web
 
@@ -90,27 +91,25 @@ puis `npm run dev`.
 
 1. Ouvrir le site (<https://madec01.github.io/kine/>), forcer le rechargement une fois si l’ancienne
    version est encore en cache.
-2. **Réglages → Sauvegarde en ligne (Firebase)** : l’état doit être « à jour », une **clé de
-   bibliothèque** est affichée (ex. `k7md-3xqp-…`). L’indicateur en bas du menu passe de
-   « Local seulement » à « Sauvegardé en ligne ».
+2. **Réglages → Sauvegarde en ligne (Firebase)** : l’état doit être « à jour ». L’indicateur en bas
+   du menu passe de « Local seulement » à « Sauvegardé en ligne ».
 3. Créer une famille, un tag et un exercice, puis appuyer sur **Sauvegarder maintenant** (sinon
    l’envoi part de lui-même une minute plus tard).
 4. Dans la console Firebase → Firestore Database → onglet **Données** : une collection `libraries`
-   apparaît, avec un document portant votre clé, et dedans les sous-collections `families`,
-   `exercises` (et `media` dès qu’une image est ajoutée).
+   apparaît, avec un document (identifiant de 24 caractères), et dedans les sous-collections
+   `families`, `exercises` (et `media` dès qu’une image est ajoutée).
 5. Dans **Réglages**, les compteurs « Aujourd’hui » indiquent quelques lectures et écritures. L’onglet
    **Utilisation** de Firestore dans la console montre la même chose avec un peu de retard.
 
 ## G. Brancher un second appareil
 
-1. Sur le premier appareil : **Réglages → Sauvegarde en ligne → Copier** la clé (ou la recopier à la
-   main, les tirets sont facultatifs).
-2. Sur le second appareil : ouvrir le site, **Réglages → Utiliser une autre clé**, coller, **Continuer**,
-   puis **Changer de clé**. Les exercices, familles et fiches arrivent en quelques secondes ; les images
-   complètes se téléchargent à l’ouverture de chaque fiche, ou toutes d’un coup avec le bouton
-   **Télécharger les images**.
-3. Conserver la clé dans un endroit sûr (gestionnaire de mots de passe) : elle permet de retrouver la
-   bibliothèque après un changement de téléphone ou un effacement du navigateur.
+Ouvrir le site sur l’autre appareil (et l’installer sur l’écran d’accueil si souhaité) : il
+rejoint automatiquement la même bibliothèque, sans rien saisir. Les exercices, familles et fiches
+arrivent en quelques secondes ; les images complètes se téléchargent à l’ouverture de chaque fiche,
+ou toutes d’un coup avec **Réglages → Télécharger les images**.
+
+Pour voir tout de suite une modification faite ailleurs : **Réglages → Vérifier les modifications
+en ligne** (sinon c’est automatique au démarrage et au retour au premier plan après quinze minutes).
 
 ## H. En cas de problème
 
@@ -121,6 +120,7 @@ puis `npm run dev`.
 | « hors connexion » alors que le réseau marche | réseau d’établissement bloquant `firestore.googleapis.com` | essayer en 4G ; les modifications partiront au retour du réseau |
 | « quota Firebase épuisé » ou « en pause » | plafond du jour atteint (anormal en usage courant) | consulter l’onglet Utilisation, attendre le lendemain (réinitialisation vers 9 h, heure de Paris) ; les données restent sur l’appareil |
 | une image n’apparaît pas sur le second appareil | pas encore téléchargée | ouvrir la fiche en ligne une fois, ou **Télécharger les images** dans Réglages |
+| un appareil a utilisé une ancienne version avec une clé affichée | identifiant différent | rien à faire : au premier démarrage de la nouvelle version, son contenu est fusionné dans la bibliothèque partagée |
 
 Le quota gratuit est de 50 000 lectures et 20 000 écritures par jour. L’usage attendu est de
 quelques dizaines d’opérations par jour ; les compteurs de Réglages permettent de le constater.
