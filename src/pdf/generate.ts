@@ -60,17 +60,8 @@ export async function generateSheetPdf(args: GenerateArgs): Promise<Blob> {
 
     let video: PdfExercise['video'];
     if (options.video) {
-      const uploaded = exercise.media.find((m) => m.kind === 'video');
-      let url = exercise.videoUrl.trim();
-      let label = 'Vidéo de démonstration';
-      if (!url && uploaded) {
-        try {
-          url = await repo.mediaShareUrl(uploaded);
-          label = url ? 'Vidéo jointe (lien valable un an)' : '';
-        } catch {
-          url = '';
-        }
-      }
+      // Only a link can be printed: a video file stored on the device has no address.
+      const url = exercise.videoUrl.trim();
       if (url) {
         let qr: string | undefined;
         if (url.length <= MAX_URL_LENGTH) {
@@ -80,7 +71,7 @@ export async function generateSheetPdf(args: GenerateArgs): Promise<Blob> {
             qr = undefined;
           }
         }
-        video = { url: url.length > 220 ? `${url.slice(0, 217)}…` : url, qr, label };
+        video = { url: url.length > 220 ? `${url.slice(0, 217)}…` : url, qr, label: 'Vidéo de démonstration' };
       }
     }
 

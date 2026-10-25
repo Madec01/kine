@@ -79,3 +79,31 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
+
+/** Small JPEG data URL for lists; null when the image cannot be decoded (e.g. in Node). */
+export async function makeThumb(file: Blob, size = 160): Promise<string | null> {
+  if (typeof document === 'undefined') return null;
+  try {
+    const small = await prepareImage(file, { maxSize: size, quality: 0.7, forceType: 'image/jpeg' });
+    if (small === file && file.size > 40_000) return null;
+    return await blobToDataUrl(small);
+  } catch {
+    return null;
+  }
+}
+
+/** Base64 payload without the data URL prefix. */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  return btoa(binary);
+}
+
+export function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}

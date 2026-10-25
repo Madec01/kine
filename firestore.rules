@@ -1,0 +1,17 @@
+// Règles Firestore de la bibliothèque Kiné (version sans compte).
+// La clé de bibliothèque (identifiant long et aléatoire) tient lieu d'accès :
+// impossible de lister les bibliothèques, impossible d'utiliser un identifiant court.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /libraries/{libraryId} {
+      allow get, create, update: if libraryId.size() >= 20;
+      allow list, delete: if false;
+
+      match /{collection}/{docId} {
+        allow read, write: if libraryId.size() >= 20
+          && collection in ['families', 'exercises', 'sheets', 'media'];
+      }
+    }
+  }
+}

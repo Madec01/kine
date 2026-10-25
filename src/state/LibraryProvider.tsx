@@ -1,26 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useAuth } from './AuthProvider';
-import type {
-  Exercise,
-  ExerciseInput,
-  Library,
-  Media,
-  MediaKind,
-  Role,
-  Sheet,
-  SheetInput,
-  Tag,
-  TagFamily,
-} from '../data/types';
+import { useRepo } from './RepositoryProvider';
+import type { Exercise, ExerciseInput, Library, Media, MediaKind, Sheet, SheetInput, Tag, TagFamily } from '../data/types';
 import type { LibrarySnapshot } from '../data/repository';
 import { duplicateName, sortFamilies } from '../domain/search';
 
 interface LibraryContextValue extends LibrarySnapshot {
   library: Library | null;
-  libraries: Library[];
-  role: Role;
+  /** Kept for the UI: every user of this device may edit. */
   canEdit: boolean;
-  isOwner: boolean;
   loading: boolean;
   error: string | null;
   tagById: Map<string, Tag>;
@@ -28,7 +15,6 @@ interface LibraryContextValue extends LibrarySnapshot {
   getExercise: (id: string) => Exercise | undefined;
 
   reload: () => Promise<void>;
-  switchLibrary: (id: string) => void;
   renameLibrary: (name: string) => Promise<void>;
 
   createFamily: (input: Pick<TagFamily, 'name' | 'description' | 'color'>) => Promise<TagFamily>;
@@ -55,74 +41,57 @@ interface LibraryContextValue extends LibrarySnapshot {
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
 const EMPTY: LibrarySnapshot = { families: [], tags: [], exercises: [], sheets: [] };
-const CURRENT_KEY = 'kine-current-library';
 
 export function LibraryProvider({ children }: { children: ReactNode }) {
-  const { repo, user } = useAuth();
-  const [libraries, setLibraries] = useState<Library[]>([]);
-  const [libraryId, setLibraryId] = useState<string | null>(() => localStorage.getItem(CURRENT_KEY));
+  const repo = useRepo();
+  const [library, setLibrary] = useState<Library | null>(null);
   const [snapshot, setSnapshot] = useState<LibrarySnapshot>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const library = useMemo(() => libraries.find((l) => l.id === libraryId) ?? libraries[0] ?? null, [libraries, libraryId]);
-
   const reload = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
-      const list = await repo.listLibraries();
-      setLibraries(list);
-      const chosen = list.find((l) => l.id === libraryId) ?? list[0];
-      if (!chosen) throw new Error('Aucune bibliothèque disponible.');
-      setSnapshot(await repo.loadSnapshot(chosen.id));
+      const [lib, snap] = await Promise.all([repo.getLibrary(), repo.loadSnapshot()]);
+      setLibrary(lib);
+      setSnapshot(snap);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [repo, libraryId]);
+  }, [repo]);
 
   useEffect(() => {
     void reload();
-  }, [reload, user?.id]);
+  }, [reload]);
 
-  const switchLibrary = useCallback((id: string) => {
-    localStorage.setItem(CURRENT_KEY, id);
-    setLibraryId(id);
-  }, []);
-
-  const requireLibrary = (): Library => {
-    if (!library) throw new Error('Bibliothèque non chargée.');
-    return library;
+  /** Re-reads one exercise from the store (media flags may have changed). */
+  const refreshExercise = async (id: string) => {
+    const snap = await repo.loadSnapshot();
+    const fresh = snap.exercises.find((e) => e.id === id);
+    if (fresh) setSnapshot((s) => ({ ...s, exercises: s.exercises.map((e) => (e.id === id ? fresh : e)) }));
+    return fresh;
   };
-
-  const patchExercise = (updated: Exercise) =>
-    setSnapshot((s) => ({ ...s, exercises: s.exercises.map((e) => (e.id === updated.id ? updated : e)) }));
 
   const value: LibraryContextValue = {
     ...snapshot,
     library,
-    libraries,
-    role: library?.role ?? 'reader',
-    canEdit: library?.role === 'owner' || library?.role === 'editor',
-    isOwner: library?.role === 'owner',
+    canEdit: true,
     loading,
     error,
     tagById: useMemo(() => new Map(snapshot.tags.map((t) => [t.id, t])), [snapshot.tags]),
     familyById: useMemo(() => new Map(snapshot.families.map((f) => [f.id, f])), [snapshot.families]),
     getExercise: (id) => snapshot.exercises.find((e) => e.id === id),
     reload,
-    switchLibrary,
 
     async renameLibrary(name) {
-      const lib = requireLibrary();
-      await repo.renameLibrary(lib.id, name);
-      setLibraries((list) => list.map((l) => (l.id === lib.id ? { ...l, name: name.trim() || l.name } : l)));
+      await repo.renameLibrary(name);
+      setLibrary(await repo.getLibrary());
     },
 
     async createFamily(input) {
-      const family = await repo.createFamily(requireLibrary().id, input);
+      const family = await repo.createFamily(input);
       setSnapshot((s) => ({ ...s, families: [...s.families, family] }));
       return family;
     },
@@ -138,9 +107,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       if (index < 0 || target < 0 || target >= ordered.length) return;
       const reordered = [...ordered];
       [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-      const updated = await Promise.all(
-        reordered.map((f, position) => (f.position === position ? Promise.resolve(f) : repo.updateFamily(f.id, { position }))),
-      );
+      const updated: TagFamily[] = [];
+      for (const [position, f] of reordered.entries()) updated.push(f.position === position ? f : await repo.updateFamily(f.id, { position }));
       setSnapshot((s) => ({ ...s, families: updated }));
     },
     async deleteFamily(id) {
@@ -176,13 +144,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     },
 
     async createExercise(input) {
-      const exercise = await repo.createExercise(requireLibrary().id, input);
+      const exercise = await repo.createExercise(input);
       setSnapshot((s) => ({ ...s, exercises: [...s.exercises, exercise] }));
       return exercise;
     },
     async updateExercise(id, input) {
       const exercise = await repo.updateExercise(id, input);
-      patchExercise(exercise);
+      setSnapshot((s) => ({ ...s, exercises: s.exercises.map((e) => (e.id === id ? exercise : e)) }));
       return exercise;
     },
     async deleteExercise(exercise) {
@@ -202,32 +170,21 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
     async uploadMedia(exercise, file, kind, caption) {
       const media = await repo.uploadMedia(exercise, file, kind, caption);
-      setSnapshot((s) => ({
-        ...s,
-        exercises: s.exercises.map((e) => (e.id === exercise.id ? { ...e, media: [...e.media, media] } : e)),
-      }));
+      await refreshExercise(exercise.id);
       return media;
     },
     async updateMedia(media, patch) {
       const updated = await repo.updateMedia(media.id, patch);
-      setSnapshot((s) => ({
-        ...s,
-        exercises: s.exercises.map((e) =>
-          e.id === media.exerciseId ? { ...e, media: e.media.map((m) => (m.id === media.id ? updated : m)) } : e,
-        ),
-      }));
+      await refreshExercise(media.exerciseId);
       return updated;
     },
     async deleteMedia(media) {
       await repo.deleteMedia(media);
-      setSnapshot((s) => ({
-        ...s,
-        exercises: s.exercises.map((e) => (e.id === media.exerciseId ? { ...e, media: e.media.filter((m) => m.id !== media.id) } : e)),
-      }));
+      await refreshExercise(media.exerciseId);
     },
 
     async saveSheet(input, id) {
-      const sheet = await repo.saveSheet(requireLibrary().id, input, id);
+      const sheet = await repo.saveSheet(input, id);
       setSnapshot((s) => ({
         ...s,
         sheets: s.sheets.some((x) => x.id === sheet.id) ? s.sheets.map((x) => (x.id === sheet.id ? sheet : x)) : [sheet, ...s.sheets],

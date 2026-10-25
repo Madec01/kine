@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../state/AuthProvider';
+import { useRepo } from '../state/RepositoryProvider';
 import { useLibrary } from '../state/LibraryProvider';
 import { useSelection } from '../state/SelectionProvider';
 import { errorMessage, useToast } from '../state/ToastProvider';
 import { ConfirmDialog, EmptyState, Field } from '../components/ui';
-import { MediaThumb } from '../components/MediaThumb';
+import { ExerciseThumb } from '../components/MediaThumb';
 import { TagChip } from '../components/TagChip';
 import { IconClose, IconDown, IconDownload, IconExternal, IconPlus, IconSheet, IconTrash, IconUp } from '../components/icons';
 import { generateSheetPdf } from '../pdf/generate';
@@ -28,7 +28,7 @@ const OPTION_LABELS: Array<[keyof SheetOptions, string]> = [
 ];
 
 export function SelectionPage() {
-  const { repo } = useAuth();
+  const repo = useRepo();
   const { exercises, families, tags, tagById, familyById, sheets, canEdit, saveSheet, deleteSheet } = useLibrary();
   const selection = useSelection();
   const { notify } = useToast();
@@ -112,7 +112,7 @@ export function SelectionPage() {
               return (
                 <div key={exercise.id} className="sel-row reveal" style={{ '--i': index } as React.CSSProperties}>
                   <span className="sel-row__num">{index + 1}</span>
-                  <div className="sel-row__thumb"><MediaThumb media={exercise.media.find((m) => m.kind === 'image')} /></div>
+                  <div className="sel-row__thumb"><ExerciseThumb exercise={exercise} /></div>
                   <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
                     <Link to={`/exercices/${exercise.id}`} style={{ color: 'inherit', fontWeight: 700, textDecoration: 'none' }}>{exercise.name}</Link>
                     {chips.length > 0 && <div className="chips">{chips.map((t) => <TagChip key={t.id} tag={t} family={familyById.get(t.familyId)} small />)}</div>}

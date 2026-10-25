@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useAuth } from '../state/AuthProvider';
+import { useRepo } from '../state/RepositoryProvider';
 import { useLibrary } from '../state/LibraryProvider';
+import { useSync } from '../state/SyncProvider';
 import { errorMessage, useToast } from '../state/ToastProvider';
 import { ConfirmDialog, Dialog, Field } from '../components/ui';
-import { IconDownload, IconLogout, IconTrash, IconUpload } from '../components/icons';
+import { IconCopy, IconDownload, IconUpload } from '../components/icons';
 import { buildExport, parseExport, summarizeExport, type ExportFile, type ExportSummary } from '../domain/exportImport';
 import { importExport, type ImportMode, type ImportReport } from '../domain/importer';
 import { blobToDataUrl, prepareImage } from '../lib/images';
 import { downloadJson, safeFilename } from '../lib/download';
 import { canPromptInstall, isIos, isStandalone, onInstallChange, promptInstall } from '../lib/install';
 import { formatDate, plural } from '../lib/format';
-import type { Invitation, Member, Role } from '../data/types';
+import { formatLibraryKey, isValidLibraryKey, normalizeLibraryKey } from '../sync/libraryKey';
 
 export function SettingsPage() {
-  const { repo, user } = useAuth();
   const lib = useLibrary();
   const { notify } = useToast();
 
@@ -21,22 +21,20 @@ export function SettingsPage() {
     <>
       <div className="page-head">
         <div className="page-head__text">
-          <span className="eyebrow">Compte, partage, sauvegarde</span>
+          <span className="eyebrow">Sauvegarde, bibliothèque, installation</span>
           <h1>Réglages</h1>
         </div>
       </div>
       <div className="settings">
-        <AccountSection />
+        <OnlineBackupSection />
         <LibrarySection />
-        <SharingSection />
-        <BackupSection />
+        <ExportSection />
         <InstallSection />
         <section className="form-section">
           <h2>À propos</h2>
           <dl className="kv">
-            <dt>Version</dt><dd>2.0 · {repo.mode === 'supabase' ? 'Supabase' : 'stockage local'}</dd>
+            <dt>Version</dt><dd>2.1</dd>
             <dt>Données</dt><dd>{plural(lib.exercises.length, 'exercice')}, {plural(lib.families.length, 'famille')}, {plural(lib.tags.length, 'tag')}, {plural(lib.sheets.length, 'fiche enregistrée', 'fiches enregistrées')}</dd>
-            {user && <><dt>Compte</dt><dd style={{ overflowWrap: 'anywhere' }}>{user.email}</dd></>}
           </dl>
           <p className="small muted">Cette bibliothèque n’est pas un dossier patient : n’y enregistrez aucune donnée nominative de résident. Les dosages et précautions relèvent de votre évaluation clinique.</p>
           <button type="button" className="btn btn--ghost btn--sm" style={{ justifySelf: 'start' }} onClick={() => { notify('Rechargement…'); void lib.reload(); }}>Recharger les données</button>
@@ -46,195 +44,151 @@ export function SettingsPage() {
   );
 }
 
-function AccountSection() {
-  const { repo, user } = useAuth();
+function formatTime(ms: number | null): string {
+  if (!ms) return 'jamais';
+  const date = new Date(ms);
+  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function OnlineBackupSection() {
+  const { enabled, ready, status, saveNow, checkNow, downloadAllMedia, useLibraryKey } = useSync();
   const { notify } = useToast();
-  const [pwdOpen, setPwdOpen] = useState(false);
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [keyDialog, setKeyDialog] = useState(false);
+  const [keyInput, setKeyInput] = useState('');
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
 
-  const changePassword = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await repo.auth.updatePassword(password);
-      notify('Mot de passe modifié.', 'ok');
-      setPwdOpen(false);
-      setPassword('');
-    } catch (err) {
-      notify(errorMessage(err), 'danger');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (repo.mode === 'local') {
+  if (!enabled) {
     return (
       <section className="form-section">
-        <h2>Mode local</h2>
+        <h2>Sauvegarde en ligne</h2>
         <div className="notice notice--warn">
           <div>
-            <strong>Les données restent dans ce navigateur.</strong> Aucun compte, aucune synchronisation, aucun contrôle d’accès : ce mode sert à essayer l’application ou à travailler sur un seul appareil. Exportez régulièrement une sauvegarde.
+            <strong>Non configurée : les données restent sur cet appareil.</strong> Pour une sauvegarde automatique sur Firebase et un accès depuis plusieurs appareils, renseignez la configuration Firebase au moment de la construction du site (voir le README). En attendant, exportez régulièrement un fichier JSON ci-dessous.
           </div>
         </div>
-        <p className="small muted">Pour un espace privé en ligne, sécurisé côté serveur et partageable avec des collègues, configurez Supabase (voir le README du dépôt) puis redéployez le site.</p>
       </section>
     );
   }
 
+  const run = async (label: string, action: () => Promise<unknown>, success?: string) => {
+    setBusy(label);
+    try {
+      await action();
+      if (success) notify(success, 'ok');
+    } catch (e) {
+      notify(errorMessage(e), 'danger');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyKey = async () => {
+    if (!status.libraryId) return;
+    try {
+      await navigator.clipboard.writeText(status.libraryId);
+      notify('Clé copiée.', 'ok');
+    } catch {
+      notify('Copie impossible : sélectionnez la clé et copiez-la manuellement.', 'danger');
+    }
+  };
+
+  const submitKey = (event: FormEvent) => {
+    event.preventDefault();
+    const key = normalizeLibraryKey(keyInput);
+    if (!isValidLibraryKey(key)) {
+      notify('Clé invalide : 20 caractères au minimum, lettres et chiffres.', 'danger');
+      return;
+    }
+    setKeyDialog(false);
+    setConfirmKey(key);
+  };
+
+  const stateLabel: Record<typeof status.state, string> = {
+    disabled: 'désactivée',
+    idle: 'à jour',
+    pending: `${plural(status.pending, 'modification')} en attente`,
+    syncing: 'envoi en cours',
+    offline: `hors connexion, ${plural(status.pending, 'modification')} en attente`,
+    error: 'erreur',
+    paused: 'en pause (plafond du jour atteint)',
+  };
+
   return (
     <section className="form-section">
-      <h2>Compte</h2>
-      <dl className="kv">
-        <dt>Connecté</dt><dd style={{ overflowWrap: 'anywhere' }}>{user?.email}</dd>
-        <dt>Sécurité</dt><dd>Accès contrôlé par Supabase (authentification et politiques RLS en base de données).</dd>
-      </dl>
-      <div className="btn-row">
-        <button type="button" className="btn" onClick={() => setPwdOpen(true)}>Changer le mot de passe</button>
-        <button type="button" className="btn btn--ghost" onClick={() => void repo.auth.signOut()}><IconLogout /> Se déconnecter</button>
-      </div>
-      <Dialog open={pwdOpen} onClose={() => setPwdOpen(false)} title="Nouveau mot de passe">
-        <form onSubmit={changePassword} className="form-grid">
-          <Field label="Mot de passe" htmlFor="new-password" hint="Au moins 6 caractères."><input id="new-password" className="input" type="password" minLength={6} required autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus /></Field>
-          <div className="dialog__foot"><button type="button" className="btn btn--ghost" onClick={() => setPwdOpen(false)}>Annuler</button><button type="submit" className="btn btn--primary" disabled={busy}>Enregistrer</button></div>
+      <h2>Sauvegarde en ligne (Firebase)</h2>
+      {!ready ? (
+        <p className="small muted">Connexion à la sauvegarde…</p>
+      ) : (
+        <>
+          <dl className="kv">
+            <dt>État</dt><dd>{stateLabel[status.state]}</dd>
+            <dt>Dernière sauvegarde</dt><dd>{formatTime(status.lastSuccessAt)}</dd>
+            <dt>Aujourd’hui</dt><dd>{status.readsToday} lectures · {status.writesToday} écritures <span className="muted">(quota gratuit : 50 000 lectures, 20 000 écritures par jour)</span></dd>
+            {status.missingMedia > 0 && <><dt>Images</dt><dd>{plural(status.missingMedia, 'image')} en ligne non encore téléchargée{status.missingMedia > 1 ? 's' : ''} sur cet appareil</dd></>}
+          </dl>
+          {status.lastError && <div className="notice notice--danger">{status.lastError}</div>}
+          <p className="small muted">Les modifications sont envoyées automatiquement une minute après le dernier changement, à la fermeture de l’application et sur demande. Seuls les éléments modifiés sont transmis.</p>
+          <div className="btn-row">
+            <button type="button" className="btn btn--primary" disabled={Boolean(busy) || status.state === 'syncing'} onClick={() => void run('save', saveNow, 'Sauvegarde terminée.')}>Sauvegarder maintenant</button>
+            <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void run('check', async () => { const n = await checkNow(); notify(n > 0 ? `${plural(n, 'élément')} mis à jour depuis la sauvegarde en ligne.` : 'Aucune modification en ligne.', 'ok'); })}>Vérifier les modifications en ligne</button>
+            {status.missingMedia > 0 && (
+              <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void run('media', async () => { const n = await downloadAllMedia(); notify(`${plural(n, 'image')} téléchargée${n > 1 ? 's' : ''}.`, 'ok'); })}>
+                <IconDownload /> Télécharger les images ({status.missingMedia} lectures)
+              </button>
+            )}
+          </div>
+
+          <div className="field">
+            <span className="field__label">Clé de la bibliothèque</span>
+            <div className="btn-row">
+              <code className="input" style={{ width: 'auto', minHeight: 40, display: 'inline-flex', alignItems: 'center', fontFamily: 'ui-monospace, monospace', letterSpacing: '0.04em', userSelect: 'all' }}>{status.libraryId ? formatLibraryKey(status.libraryId) : '…'}</code>
+              <button type="button" className="btn btn--sm" onClick={() => void copyKey()}><IconCopy /> Copier</button>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setKeyInput(''); setKeyDialog(true); }}>Utiliser une autre clé</button>
+            </div>
+            <span className="field__hint">Cette clé tient lieu d’identifiant : saisissez-la sur un autre appareil pour retrouver la même bibliothèque. Ne la partagez qu’avec des personnes de confiance ; toute personne qui la connaît peut lire et modifier les données.</span>
+          </div>
+        </>
+      )}
+
+      <Dialog open={keyDialog} onClose={() => setKeyDialog(false)} title="Utiliser une autre clé">
+        <form className="form-grid" onSubmit={submitKey}>
+          <Field label="Clé de la bibliothèque à rejoindre" htmlFor="library-key" hint="Recopiez la clé affichée dans les réglages de l’autre appareil (les tirets sont facultatifs)."><input id="library-key" className="input" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} autoFocus autoComplete="off" spellCheck={false} /></Field>
+          <div className="dialog__foot"><button type="button" className="btn btn--ghost" onClick={() => setKeyDialog(false)}>Annuler</button><button type="submit" className="btn btn--primary">Continuer</button></div>
         </form>
       </Dialog>
+      <ConfirmDialog
+        open={Boolean(confirmKey)}
+        title="Changer de bibliothèque en ligne ?"
+        message={<>Cet appareil utilisera la clé <code>{confirmKey ? formatLibraryKey(confirmKey) : ''}</code>. Son contenu actuel sera ajouté à cette bibliothèque (fusion), puis les données en ligne seront téléchargées.</>}
+        confirmLabel="Changer de clé"
+        busy={busy === 'key'}
+        onConfirm={() => { const key = confirmKey; if (key) void run('key', () => useLibraryKey(key), 'Bibliothèque rejointe.').then(() => setConfirmKey(null)); }}
+        onClose={() => setConfirmKey(null)}
+      />
     </section>
   );
 }
 
 function LibrarySection() {
-  const { library, libraries, isOwner, renameLibrary, switchLibrary } = useLibrary();
+  const { library, renameLibrary } = useLibrary();
   const { notify } = useToast();
   const [name, setName] = useState(library?.name ?? '');
   useEffect(() => setName(library?.name ?? ''), [library?.name]);
   if (!library) return null;
-
   return (
     <section className="form-section">
       <h2>Bibliothèque</h2>
-      {libraries.length > 1 && (
-        <Field label="Bibliothèque active" htmlFor="lib-switch" hint="Vous avez accès à plusieurs bibliothèques (la vôtre et celles partagées avec vous).">
-          <select id="lib-switch" className="select" value={library.id} onChange={(e) => switchLibrary(e.target.value)}>
-            {libraries.map((l) => <option key={l.id} value={l.id}>{l.name} · {l.role === 'owner' ? 'propriétaire' : l.role === 'editor' ? 'collaborateur' : 'lecteur'}</option>)}
-          </select>
-        </Field>
-      )}
-      {isOwner ? (
-        <form className="form-grid" onSubmit={(e) => { e.preventDefault(); renameLibrary(name).then(() => notify('Nom enregistré.', 'ok')).catch((err) => notify(errorMessage(err), 'danger')); }}>
-          <Field label="Nom de la bibliothèque" htmlFor="lib-name"><input id="lib-name" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <button type="submit" className="btn" style={{ justifySelf: 'start' }} disabled={name.trim() === library.name}>Renommer</button>
-        </form>
-      ) : (
-        <p className="small muted">{library.name} — vous y accédez en tant que {library.role === 'editor' ? 'collaborateur' : 'lecteur'}.</p>
-      )}
+      <form className="form-grid" onSubmit={(e) => { e.preventDefault(); renameLibrary(name).then(() => notify('Nom enregistré.', 'ok')).catch((err) => notify(errorMessage(err), 'danger')); }}>
+        <Field label="Nom de la bibliothèque" htmlFor="lib-name"><input id="lib-name" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <button type="submit" className="btn" style={{ justifySelf: 'start' }} disabled={name.trim() === library.name || !name.trim()}>Renommer</button>
+      </form>
     </section>
   );
 }
 
-function SharingSection() {
-  const { repo } = useAuth();
-  const { library, isOwner, canEdit } = useLibrary();
-  const { notify } = useToast();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<Exclude<Role, 'owner'>>('reader');
-  const [busy, setBusy] = useState(false);
-  const [toRemove, setToRemove] = useState<Member | null>(null);
-
-  const refresh = async () => {
-    if (!library || repo.mode === 'local') return;
-    try {
-      setMembers(await repo.listMembers(library.id));
-      if (isOwner) setInvitations(await repo.listInvitations(library.id));
-    } catch (e) {
-      notify(errorMessage(e), 'danger');
-    }
-  };
-  useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [library?.id, isOwner]);
-
-  if (repo.mode === 'local' || !library) {
-    return (
-      <section className="form-section">
-        <h2>Partage</h2>
-        <p className="small muted">Le partage avec des collègues (collaborateur ou lecteur) est disponible en mode Supabase : chaque personne se connecte avec son compte et ne voit que les bibliothèques auxquelles elle est invitée.</p>
-      </section>
-    );
-  }
-
-  const invite = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await repo.invite(library.id, email, role);
-      notify(`Invitation enregistrée pour ${email.trim()}. L’accès s’activera à sa prochaine connexion (compte créé avec cette adresse).`, 'ok');
-      setEmail('');
-      await refresh();
-    } catch (err) {
-      notify(errorMessage(err), 'danger');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const roleName = (r: Role) => (r === 'owner' ? 'Propriétaire' : r === 'editor' ? 'Collaborateur' : 'Lecteur');
-
-  return (
-    <section className="form-section">
-      <h2>Partage</h2>
-      <p className="small muted">Propriétaire : tout gérer. Collaborateur : consulter et modifier. Lecteur : consulter et générer des PDF.</p>
-      <div className="members">
-        {members.map((m) => (
-          <div key={m.userId} className="member">
-            <span className="member__mail">{m.email || m.userId}</span>
-            {isOwner && !m.isOwner ? (
-              <>
-                <select className="select" style={{ width: 'auto', minHeight: 36, padding: '4px 32px 4px 10px' }} value={m.role} onChange={(e) => repo.setMemberRole(library.id, m.userId, e.target.value as Exclude<Role, 'owner'>).then(refresh).catch((err) => notify(errorMessage(err), 'danger'))} aria-label={`Rôle de ${m.email}`}>
-                  <option value="editor">Collaborateur</option>
-                  <option value="reader">Lecteur</option>
-                </select>
-                <button type="button" className="btn btn--ghost btn--icon btn--sm btn--danger" onClick={() => setToRemove(m)} aria-label="Retirer l’accès"><IconTrash /></button>
-              </>
-            ) : (
-              <span className="badge">{roleName(m.role)}</span>
-            )}
-          </div>
-        ))}
-        {invitations.map((inv) => (
-          <div key={inv.id} className="member">
-            <span className="member__mail">{inv.email}</span>
-            <span className="badge badge--warn">Invitation · {roleName(inv.role)}</span>
-            <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={() => repo.cancelInvitation(inv.id).then(refresh).catch((err) => notify(errorMessage(err), 'danger'))} aria-label="Annuler l’invitation"><IconTrash /></button>
-          </div>
-        ))}
-      </div>
-      {isOwner && (
-        <form className="form-grid" onSubmit={invite}>
-          <div className="form-grid form-grid--2">
-            <Field label="Adresse e-mail du collègue" htmlFor="invite-mail"><input id="invite-mail" className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-            <Field label="Rôle" htmlFor="invite-role">
-              <select id="invite-role" className="select" value={role} onChange={(e) => setRole(e.target.value as Exclude<Role, 'owner'>)}>
-                <option value="reader">Lecteur</option>
-                <option value="editor">Collaborateur</option>
-              </select>
-            </Field>
-          </div>
-          <button type="submit" className="btn btn--primary" style={{ justifySelf: 'start' }} disabled={busy}>Inviter</button>
-          <p className="small muted">La personne doit créer un compte avec exactement cette adresse (ou être invitée depuis le tableau de bord Supabase si les inscriptions sont fermées).</p>
-        </form>
-      )}
-      {!isOwner && canEdit && <p className="small muted">Seul le propriétaire gère les accès.</p>}
-      <ConfirmDialog open={Boolean(toRemove)} title="Retirer l’accès ?" message={<>{toRemove?.email} n’aura plus accès à « {library.name} ».</>} confirmLabel="Retirer" danger onConfirm={() => { const m = toRemove; if (m) repo.removeMember(library.id, m.userId).then(refresh).catch((err) => notify(errorMessage(err), 'danger')).finally(() => setToRemove(null)); }} onClose={() => setToRemove(null)} />
-    </section>
-  );
-}
-
-function BackupSection() {
-  const { repo } = useAuth();
+function ExportSection() {
+  const repo = useRepo();
   const lib = useLibrary();
   const { notify } = useToast();
   const [withImages, setWithImages] = useState(true);
@@ -288,11 +242,11 @@ function BackupSection() {
   };
 
   const doImport = async () => {
-    if (!file || !lib.library) return;
+    if (!file) return;
     setProgress('Import en cours…');
     try {
       const snapshot = { families: lib.families, tags: lib.tags, exercises: lib.exercises, sheets: lib.sheets };
-      const result = await importExport(repo, lib.library.id, file, mode, snapshot, setProgress);
+      const result = await importExport(repo, file, mode, snapshot, setProgress);
       await lib.reload();
       setReport(result);
       setFile(null);
@@ -306,12 +260,12 @@ function BackupSection() {
 
   return (
     <section className="form-section">
-      <h2>Sauvegarde et export</h2>
-      <p className="small muted">Le fichier JSON contient les exercices, les familles, les tags, leurs associations et les fiches enregistrées : il permet de restaurer la bibliothèque ou de changer de solution technique. Les vidéos jointes ne sont pas incluses.</p>
+      <h2>Export et import (fichier JSON)</h2>
+      <p className="small muted">Le fichier contient les exercices, les familles, les tags, leurs associations et les fiches enregistrées. Il sert de sauvegarde de secours indépendante de Firebase et permet de changer de solution technique. Les vidéos jointes ne sont pas incluses.</p>
       <label className="check"><input type="checkbox" checked={withImages} onChange={(e) => setWithImages(e.target.checked)} /> Inclure les images (fichier plus lourd)</label>
       <div className="btn-row">
-        <button type="button" className="btn btn--primary" onClick={() => void doExport()} disabled={Boolean(exporting)}><IconDownload /> {exporting ?? 'Exporter la bibliothèque'}</button>
-        {lib.canEdit && <button type="button" className="btn" onClick={() => input.current?.click()}><IconUpload /> Importer un export</button>}
+        <button type="button" className="btn" onClick={() => void doExport()} disabled={Boolean(exporting)}><IconDownload /> {exporting ?? 'Exporter la bibliothèque'}</button>
+        <button type="button" className="btn" onClick={() => input.current?.click()}><IconUpload /> Importer un export</button>
         <input ref={input} type="file" accept="application/json,.json" hidden onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
       {report && (
@@ -364,7 +318,7 @@ function InstallSection() {
       ) : (
         <p className="small">Dans le menu du navigateur : <strong>Installer l’application</strong> ou <strong>Ajouter à l’écran d’accueil</strong>.</p>
       )}
-      <p className="small muted">L’interface est disponible hors connexion ; les données nécessitent une connexion en mode Supabase.</p>
+      <p className="small muted">L’application et ses données fonctionnent hors connexion ; la sauvegarde en ligne reprend au retour du réseau.</p>
     </section>
   );
 }

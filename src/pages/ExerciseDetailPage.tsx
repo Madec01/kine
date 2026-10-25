@@ -12,10 +12,14 @@ import { formatDate } from '../lib/format';
 import type { Media } from '../data/types';
 
 function MediaFigure({ media }: { media: Media }) {
-  const url = useMediaUrl(media);
+  const { url, error } = useMediaUrl(media);
   return (
     <figure className={media.kind === 'video' ? 'is-video' : ''}>
-      {url ? media.kind === 'video' ? <video src={url} controls playsInline preload="metadata" /> : <a href={url} target="_blank" rel="noopener"><img src={url} alt={media.caption} /></a> : <span className="small muted" style={{ padding: 8 }}>Chargement…</span>}
+      {url ? (
+        media.kind === 'video' ? <video src={url} controls playsInline preload="metadata" /> : <a href={url} target="_blank" rel="noopener"><img src={url} alt={media.caption} /></a>
+      ) : (
+        <span className="small muted" style={{ padding: 8, display: 'block' }}>{error ? 'Image non disponible hors connexion' : media.available ? 'Chargement…' : 'Téléchargement…'}</span>
+      )}
       {media.caption && <figcaption>{media.caption}</figcaption>}
     </figure>
   );

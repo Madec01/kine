@@ -1,12 +1,12 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from './state/AuthProvider';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { RepositoryProvider } from './state/RepositoryProvider';
 import { LibraryProvider, useLibrary } from './state/LibraryProvider';
 import { SelectionProvider } from './state/SelectionProvider';
+import { SyncProvider } from './state/SyncProvider';
 import { ToastProvider } from './state/ToastProvider';
 import { Layout } from './components/Layout';
 import { Splash } from './components/ui';
-import { LoginPage } from './pages/LoginPage';
 import { ExercisesPage } from './pages/ExercisesPage';
 import { ExerciseDetailPage } from './pages/ExerciseDetailPage';
 import { ExerciseFormPage } from './pages/ExerciseFormPage';
@@ -16,13 +16,6 @@ import { SettingsPage } from './pages/SettingsPage';
 const SelectionPage = lazy(() => import('./pages/SelectionPage').then((m) => ({ default: m.SelectionPage })));
 
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
-
-function RequireAuth({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
-  const location = useLocation();
-  if (status !== 'signedIn') return <Navigate to="/connexion" replace state={{ from: location.pathname }} />;
-  return <>{children}</>;
-}
 
 function LibraryGate({ children }: { children: ReactNode }) {
   const { loading, error, reload, library } = useLibrary();
@@ -44,15 +37,15 @@ function LibraryGate({ children }: { children: ReactNode }) {
 
 function Shell() {
   return (
-    <RequireAuth>
-      <LibraryProvider>
-        <LibraryGate>
+    <LibraryProvider>
+      <LibraryGate>
+        <SyncProvider>
           <SelectionProvider>
             <Layout />
           </SelectionProvider>
-        </LibraryGate>
-      </LibraryProvider>
-    </RequireAuth>
+        </SyncProvider>
+      </LibraryGate>
+    </LibraryProvider>
   );
 }
 
@@ -60,9 +53,8 @@ export function App() {
   return (
     <ToastProvider>
       <BrowserRouter basename={basename}>
-        <AuthProvider fallback={<Splash />}>
+        <RepositoryProvider fallback={<Splash />}>
           <Routes>
-            <Route path="/connexion" element={<LoginPage />} />
             <Route element={<Shell />}>
               <Route index element={<Navigate to="/exercices" replace />} />
               <Route path="/exercices" element={<ExercisesPage />} />
@@ -82,7 +74,7 @@ export function App() {
               <Route path="*" element={<Navigate to="/exercices" replace />} />
             </Route>
           </Routes>
-        </AuthProvider>
+        </RepositoryProvider>
       </BrowserRouter>
     </ToastProvider>
   );

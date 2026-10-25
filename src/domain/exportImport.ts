@@ -12,7 +12,7 @@ export interface ExportMedia {
   mimeType: string;
   /** Base64 data URL when the file was embedded in the export. */
   dataUrl?: string;
-  /** Original storage path, kept for reference when the file is not embedded. */
+  /** Reference of the file when it is not embedded (`media/<id>`). */
   storagePath?: string;
 }
 
@@ -147,7 +147,7 @@ function exportMedia(media: Media, dataUrl: string | undefined): ExportMedia {
     mimeType: media.mimeType,
   };
   if (dataUrl) entry.dataUrl = dataUrl;
-  else entry.storagePath = media.storagePath;
+  else entry.storagePath = `media/${media.id}`;
   return entry;
 }
 
