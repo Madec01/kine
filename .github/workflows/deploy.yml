@@ -35,6 +35,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/configure-pages@v5
+        with:
+          # Bascule Pages en mode « GitHub Actions » si le dépôt est encore en mode branche.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
